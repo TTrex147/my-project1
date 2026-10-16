@@ -1,0 +1,4 @@
+# Tkinter and sqlite3 come with Python. Only this one is extra (for PDF export):
+reportlab
+# Only needed when you build the .exe:
+# pyinstaller
