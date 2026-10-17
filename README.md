@@ -9,10 +9,10 @@ SDF04 - Object-Oriented Programming (Python & Database)
 3. The first run creates `student_feedback.db` (SQLite) with demo data.
 
 ## Demo accounts
-| Role    | Username | Password   |
-|---------|----------|------------|
-| Admin   | admin    | admin123   |
-| Student | juan123  | student123 |
+| Role    | Username       | Password   |
+|---------|----------------|------------|
+| Admin   | admin          | admin123   |
+| Student | tungtungsahur  | student123 |
 (other demo students: maria456, carlo789, ana123 ... all use `student123`)
 
 To start with an EMPTY database: set `SEED_DEMO_DATA = False` in `seed.py`

@@ -23,8 +23,6 @@ from theme import CATEGORIES, FEEDBACK_STATUSES, SUGGESTION_STATUSES, fmt_date, 
 class AppError(Exception):
     """An error with a message that is safe to show to the user."""
 
-
-# ======================================================================
 class UserManager:
     def __init__(self, db):
         self.db = db
@@ -46,7 +44,6 @@ class UserManager:
         row = self.db.query_one("SELECT is_active FROM users WHERE user_id = ?", (user_id,))
         return bool(row and row["is_active"])
 
-    # ---- checks
     def _check(self, full_name, username, password, role, user_id=None):
         if len(full_name.strip()) < 2:
             raise AppError("Please enter the full name.")
@@ -60,7 +57,7 @@ class UserManager:
         if taken and taken["user_id"] != user_id:
             raise AppError("That username is already taken.")
 
-    # ---- create / update
+    
     def create(self, full_name, username, password, role="student"):
         username = username.strip().lower()
         self._check(full_name, username, password, role)
@@ -97,7 +94,7 @@ class UserManager:
                         (PasswordHasher.hash(new), user_id))
 
 
-# ======================================================================
+
 class AuthManager:
     def __init__(self, db, users):
         self.db = db
@@ -121,7 +118,7 @@ class AuthManager:
         self.users.create(full_name, username, password, "student")
 
 
-# ======================================================================
+
 class SubmissionManager:
     """Works for both feedback and suggestions (polymorphism: kind -> class)."""
 
@@ -129,7 +126,7 @@ class SubmissionManager:
         self.db = db
         self.filter = ContentFilter()
 
-    # ---- validation
+  
     def _validate(self, title, category, description):
         title, description = title.strip(), description.strip()
         if not title:
@@ -146,7 +143,7 @@ class SubmissionManager:
             raise AppError("Your message has words that are not allowed. Please rewrite it politely.")
         return title, description
 
-    # ---- create
+  
     def create(self, kind, user_id, title, category, description):
         title, description = self._validate(title, category, description)
         cls = SUBMISSION_TYPES[kind]
@@ -154,7 +151,7 @@ class SubmissionManager:
             f"INSERT INTO {cls.TABLE} (user_id, title, description, category) VALUES (?,?,?,?)",
             (user_id, title, description, category))
 
-    # ---- read
+  
     def _select(self, kind, viewer_id):
         cls = SUBMISSION_TYPES[kind]
         sql = f"SELECT t.*, u.full_name AS author"
@@ -193,7 +190,7 @@ class SubmissionManager:
         row = self.db.query_one(sql + f" WHERE t.{cls.ID_COLUMN} = ?", (item_id,))
         return cls(row) if row else None
 
-    # ---- update
+    
     def update(self, kind, item_id, user_id, title, category, description):
         item = self.get(kind, item_id)
         if item is None:
@@ -216,7 +213,6 @@ class SubmissionManager:
         self.db.execute(f"UPDATE {cls.TABLE} SET status=?{extra} WHERE {cls.ID_COLUMN}=?",
                         (status, item_id))
 
-    # ---- delete
     def delete(self, kind, item_id, user_id):
         item = self.get(kind, item_id)
         if item is None:
@@ -232,7 +228,6 @@ class SubmissionManager:
         ])
 
 
-# ======================================================================
 class VoteManager:
     def __init__(self, db, submissions):
         self.db = db
@@ -257,7 +252,6 @@ class VoteManager:
         return True
 
 
-# ======================================================================
 class ResponseManager:
     def __init__(self, db):
         self.db = db
@@ -287,14 +281,13 @@ class ResponseManager:
             "ORDER BY r.created_at DESC, r.response_id DESC", (feedback_id,))
 
 
-# ======================================================================
 class ReportData:
     """A report that is ready to be shown or exported."""
 
     def __init__(self, title, date_range, summary, columns, rows):
         self.title = title
         self.date_range = date_range
-        self.summary = summary          # list of (label, value)
+        self.summary = summary          
         self.columns = columns
         self.rows = rows
 
@@ -304,14 +297,12 @@ class ReportGenerator:
         self.db = db
         self.submissions = submissions
 
-    # ---- small helper to filter by date
     @staticmethod
     def _range(column, start, end):
         if start and end:
             return f" AND date({column}, 'localtime') BETWEEN ? AND ?", [start, end]
         return "", []
 
-    # ---- dashboard numbers
     def student_stats(self, user_id):
         one = lambda sql, p=(): self.db.query_one(sql, p)[0]
         return {
@@ -349,7 +340,6 @@ class ReportGenerator:
                "ORDER BY votes DESC, t.created_at DESC LIMIT ?")
         return [r for r in self.db.query(sql, params + [limit]) if r["votes"] > 0]
 
-    # ---- chart data
     def by_category(self, kind, start=None, end=None):
         cls = SUBMISSION_TYPES[kind]
         cond, params = self._range("created_at", start, end)
@@ -392,7 +382,6 @@ class ReportGenerator:
             result.append((day.strftime("%b %d").replace(" 0", " "), counts.get(day.isoformat(), 0)))
         return result
 
-    # ---- full reports (for export)
     def build_report(self, kind, start, end):
         range_text = f"{start} to {end}"
         if kind in ("feedback", "suggestion"):
@@ -469,7 +458,6 @@ def to_iso(ts):
     return fmt_date(ts)
 
 
-# ======================================================================
 class Services:
     """One object that holds all managers, so screens can reach them easily."""
 

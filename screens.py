@@ -23,9 +23,6 @@ from widgets import (AnimatedBarChart, AnimatedDonutChart, AnimatedLineChart, An
                      form_label, make_combo)
 
 
-# ======================================================================
-#  Small helpers used by many screens
-# ======================================================================
 def card_title(parent, text, link_text=None, link_cmd=None, bg=C.WHITE):
     row = tk.Frame(parent, bg=bg)
     row.pack(fill="x", pady=(0, 12))
@@ -85,9 +82,6 @@ def open_details(app, item):
     m.show()
 
 
-# ======================================================================
-#  Base class for all screens inside the main window
-# ======================================================================
 class BaseScreen(tk.Frame):
     def __init__(self, parent, app, **params):
         super().__init__(parent, bg=C.BG)
@@ -113,9 +107,6 @@ class BaseScreen(tk.Frame):
         return box
 
 
-# ======================================================================
-#  LOGIN
-# ======================================================================
 class LoginScreen(tk.Frame):
     SHOW_DEMO_HINT = True
 
@@ -134,7 +125,6 @@ class LoginScreen(tk.Frame):
         self._build_form()
         self._float()
 
-    # ------------------------------------------------ left side (gradient + floating bubbles)
     @staticmethod
     def _grad(y, h):
         return lerp_color("#071E48", "#1F6FEB", (y / max(h, 1)) * 0.9)
@@ -156,7 +146,7 @@ class LoginScreen(tk.Frame):
             self.bubbles.append({"item": item, "x": x, "y": y, "r": r, "color": color,
                                  "vy": rng.uniform(0.35, 0.9), "vx": rng.uniform(-0.25, 0.25)})
         cx, top = w / 2, h / 2 - 150
-        # graduation cap logo
+        
         c.create_polygon(cx, top, cx + 48, top + 19, cx, top + 38, cx - 48, top + 19, fill="white", outline="", tags="fg")
         c.create_polygon(cx - 27, top + 30, cx, top + 42, cx + 27, top + 30, cx + 27, top + 49, cx, top + 60,
                          cx - 27, top + 49, fill="#CFE0FF", outline="", tags="fg")
@@ -183,7 +173,6 @@ class LoginScreen(tk.Frame):
         except tk.TclError:
             pass
 
-    # ------------------------------------------------ right side (form)
     def _build_form(self):
         f = self.form
         tk.Label(f, text="Login", bg=C.WHITE, fg=C.TEXT, font=font(26, "bold")).pack(pady=(0, 4))
@@ -210,7 +199,7 @@ class LoginScreen(tk.Frame):
         tk.Label(links, text="Don't have an account?", bg=C.WHITE, fg=C.MUTED, font=font(9)).pack(side="left")
         LinkLabel(links, "Register", self._open_register).pack(side="left", padx=(5, 0))
         if self.SHOW_DEMO_HINT:
-            tk.Label(f, text="Demo:  admin / admin123   \u2022   juan123 / student123", bg=C.WHITE,
+            tk.Label(f, text="Demo:  admin / admin123   \u2022   tungtungsahur / student123", bg=C.WHITE,
                      fg="#9AA6BE", font=font(8)).pack(pady=(22, 0))
         for w in (self.username, self.password):
             w.bind("<Return>", lambda e: self._login())
@@ -267,9 +256,6 @@ class LoginScreen(tk.Frame):
         entries["name"].focus_set()
 
 
-# ======================================================================
-#  DASHBOARDS
-# ======================================================================
 class StudentDashboard(BaseScreen):
     def build(self):
         self.header("Dashboard", f"Welcome back, {self.user.first_name}! Here is what is happening with your submissions.")
@@ -377,9 +363,6 @@ class AdminDashboard(BaseScreen):
         self.load()
 
 
-# ======================================================================
-#  SUBMIT FEEDBACK / SUGGESTION (student)
-# ======================================================================
 class SubmitScreen(BaseScreen):
     kind = "feedback"
 
@@ -431,9 +414,6 @@ class SubmitSuggestionScreen(SubmitScreen):
     kind = "suggestion"
 
 
-# ======================================================================
-#  MY SUBMISSIONS (student CRUD)
-# ======================================================================
 class MySubmissionsScreen(BaseScreen):
     def build(self):
         self.filter, self._job = "All", None
@@ -533,9 +513,6 @@ class MySubmissionsScreen(BaseScreen):
         m.show()
 
 
-# ======================================================================
-#  SUGGESTION BOARD (students vote here)
-# ======================================================================
 class SuggestionBoardScreen(BaseScreen):
     PER_PAGE = 6
 
@@ -631,9 +608,6 @@ class SuggestionBoardScreen(BaseScreen):
         self.reload()
 
 
-# ======================================================================
-#  PROFILE
-# ======================================================================
 class ProfileScreen(BaseScreen):
     def build(self):
         self.header("Profile", "Your account details and password.")
@@ -641,7 +615,7 @@ class ProfileScreen(BaseScreen):
         row.pack(fill="x")
         row.grid_columnconfigure(0, weight=1, uniform="p")
         row.grid_columnconfigure(1, weight=1, uniform="p")
-        # --- account card
+        
         c1 = Card(row, accent=C.BLUE, pad=24)
         c1.grid(row=0, column=0, sticky="nsew", padx=(0, 9))
         av = tk.Canvas(c1.body, width=84, height=84, bg=C.WHITE, highlightthickness=0)
@@ -658,7 +632,7 @@ class ProfileScreen(BaseScreen):
         self.name_msg = tk.Label(c1.body, text="", bg=C.WHITE, fg=C.RED, font=font(9))
         self.name_msg.pack(anchor="w", pady=(6, 0))
         HoverButton(c1.body, "Save Name", self.save_name, "primary", width=130).pack(anchor="e", pady=(6, 0))
-        # --- password card
+        
         c2 = Card(row, accent=C.PURPLE, pad=24)
         c2.grid(row=0, column=1, sticky="nsew", padx=(9, 0))
         tk.Label(c2.body, text="Change Password", bg=C.WHITE, fg=C.TEXT, font=font(12, "bold")).pack(anchor="w", pady=(0, 10))
@@ -694,9 +668,6 @@ class ProfileScreen(BaseScreen):
         self.app.toast.show("Password changed successfully.", "success")
 
 
-# ======================================================================
-#  ADMIN: MANAGE FEEDBACK / SUGGESTIONS
-# ======================================================================
 class ManageScreen(BaseScreen):
     kind = "feedback"
     statuses = FEEDBACK_STATUSES
@@ -887,9 +858,6 @@ class RespondScreen(BaseScreen):
         self.after(750, lambda: self.app.navigate("manage_feedback"))
 
 
-# ======================================================================
-#  ADMIN: MANAGE USERS
-# ======================================================================
 class ManageUsersScreen(BaseScreen):
     def build(self):
         self._job = None
@@ -990,9 +958,6 @@ class ManageUsersScreen(BaseScreen):
         m.show()
 
 
-# ======================================================================
-#  ADMIN: REPORTS
-# ======================================================================
 class ReportsScreen(BaseScreen):
     TABS = [("feedback", "Feedback Report"), ("suggestion", "Suggestion Report"), ("top", "Top Voted Suggestions")]
 

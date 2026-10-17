@@ -17,11 +17,13 @@ SEED_DEMO_DATA = True
 ADMIN = ("Admin User", "admin", "admin123")
 STUDENT_PASSWORD = "student123"
 
+# (Full Name, Username, Password) - if password is omitted, STUDENT_PASSWORD is used
 STUDENTS = [
     ("Juan Dela Cruz", "juan123"), ("Maria Santos", "maria456"), ("Carlo Reyes", "carlo789"),
     ("Ana Garcia", "ana123"), ("Paolo Mendoza", "paolo123"), ("Bea Ramirez", "bea123"),
     ("Luis Navarro", "luis123"), ("Kyla Bautista", "kyla123"), ("Rico Fernandez", "rico123"),
     ("Sofia Castillo", "sofia123"), ("Miguel Aquino", "miguel123"), ("Trisha Domingo", "trisha123"),
+    ("Tung Tung Sahur", "tungtungsahur")
 ]
 
 # (title, category, status, description)

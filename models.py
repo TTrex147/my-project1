@@ -13,10 +13,6 @@ from abc import ABC, abstractmethod
 
 from theme import FEEDBACK_STATUSES, SUGGESTION_STATUSES, fmt_date
 
-
-# ======================================================================
-#  USERS
-# ======================================================================
 class User(ABC):
     def __init__(self, user_id, full_name, username, is_active=True, created_at=""):
         self._user_id = user_id
@@ -25,7 +21,6 @@ class User(ABC):
         self._is_active = bool(is_active)
         self._created_at = created_at
 
-    # ---- read-only properties (encapsulation)
     @property
     def user_id(self):
         return self._user_id
@@ -57,7 +52,6 @@ class User(ABC):
     def rename(self, new_name):
         self._full_name = new_name.strip()
 
-    # ---- each child class must answer these (abstraction)
     @property
     @abstractmethod
     def role(self):
@@ -67,7 +61,6 @@ class User(ABC):
     def menu_items(self):
         """List of (screen_key, label, icon) for the sidebar."""
 
-    # ---- build the right child class from a database row
     @staticmethod
     def from_row(row):
         cls = Admin if row["role"] == "admin" else Student
@@ -107,9 +100,6 @@ class Admin(User):
         ]
 
 
-# ======================================================================
-#  SUBMISSIONS (feedback and suggestions)
-# ======================================================================
 class Submission(ABC):
     TABLE = ""
     ID_COLUMN = ""

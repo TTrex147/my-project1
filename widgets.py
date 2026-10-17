@@ -15,6 +15,10 @@ from theme import (C, CATEGORY_COLORS, FONT, PALETTE, STATUS_STYLES, animate, bg
                    clamp, darken, ease_in_out, ease_out_back, ease_out_cubic, ellipsize, font,
                    lerp_color, lighten, linear, rounded_points, rounded_rect, stop)
 
+
+# ======================================================================
+#  ttk styles (combobox + slim scrollbar)
+# ======================================================================
 def setup_styles(root):
     style = ttk.Style(root)
     style.theme_use("clam")
@@ -33,7 +37,7 @@ def setup_styles(root):
     root.option_add("*TCombobox*Listbox.selectBackground", C.BLUE)
     root.option_add("*TCombobox*Listbox.selectForeground", C.WHITE)
     root.option_add("*TCombobox*Listbox.font", font(10))
-
+    # slim scrollbar with no arrows
     style.layout("Slim.Vertical.TScrollbar", [("Vertical.Scrollbar.trough", {
         "sticky": "ns", "children": [("Vertical.Scrollbar.thumb", {"expand": "1", "sticky": "nswe"})]})])
     style.configure("Slim.Vertical.TScrollbar", troughcolor=C.BG, background="#C3CEE4",
@@ -49,6 +53,9 @@ def make_combo(parent, values, width=18, value=None):
     return box
 
 
+# ======================================================================
+#  Hover helper
+# ======================================================================
 class HoverArea:
     """Calls on_enter / on_leave when the mouse enters or leaves a widget (children included)."""
 
@@ -97,6 +104,10 @@ def set_bg_tree(widget, color):
     for child in widget.winfo_children():
         set_bg_tree(child, color)
 
+
+# ======================================================================
+#  Buttons, badges, links
+# ======================================================================
 BUTTON_STYLES = {
     "primary": dict(bg=C.BLUE, hover="#3D8BFF", press=C.BLUE_DARK, fg="#FFFFFF"),
     "success": dict(bg=C.GREEN, hover="#2BC789", press="#148A5C", fg="#FFFFFF"),
@@ -453,7 +464,9 @@ class ScrollFrame(tk.Frame):
     def _fit(self):
         w, h = self.canvas.winfo_width(), self.canvas.winfo_height()
         need = self.inner.winfo_reqheight()
-        self.canvas.itemconfigure(self._win, width=w, height=max(need, h))
+        # Only the WIDTH is fixed. The height follows the content, so this method runs again
+        # every time the page becomes taller or shorter (new cards, new rows, charts...).
+        self.canvas.itemconfigure(self._win, width=w)
         self.canvas.configure(scrollregion=(0, 0, w, max(need, h)))
         if need > h + 1:
             self.bar.place(relx=1.0, rely=0, relheight=1.0, anchor="ne", width=9)
