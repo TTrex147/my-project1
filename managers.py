@@ -23,6 +23,8 @@ from theme import CATEGORIES, FEEDBACK_STATUSES, SUGGESTION_STATUSES, fmt_date, 
 class AppError(Exception):
     """An error with a message that is safe to show to the user."""
 
+
+# ======================================================================
 class UserManager:
     def __init__(self, db):
         self.db = db
@@ -44,6 +46,7 @@ class UserManager:
         row = self.db.query_one("SELECT is_active FROM users WHERE user_id = ?", (user_id,))
         return bool(row and row["is_active"])
 
+    # ---- checks
     def _check(self, full_name, username, password, role, user_id=None):
         if len(full_name.strip()) < 2:
             raise AppError("Please enter the full name.")
@@ -57,7 +60,7 @@ class UserManager:
         if taken and taken["user_id"] != user_id:
             raise AppError("That username is already taken.")
 
-    
+    # ---- create / update
     def create(self, full_name, username, password, role="student"):
         username = username.strip().lower()
         self._check(full_name, username, password, role)
@@ -94,7 +97,7 @@ class UserManager:
                         (PasswordHasher.hash(new), user_id))
 
 
-
+# ======================================================================
 class AuthManager:
     def __init__(self, db, users):
         self.db = db
@@ -118,7 +121,7 @@ class AuthManager:
         self.users.create(full_name, username, password, "student")
 
 
-
+# ======================================================================
 class SubmissionManager:
     """Works for both feedback and suggestions (polymorphism: kind -> class)."""
 
@@ -126,7 +129,7 @@ class SubmissionManager:
         self.db = db
         self.filter = ContentFilter()
 
-  
+    # ---- validation
     def _validate(self, title, category, description):
         title, description = title.strip(), description.strip()
         if not title:
@@ -143,7 +146,7 @@ class SubmissionManager:
             raise AppError("Your message has words that are not allowed. Please rewrite it politely.")
         return title, description
 
-  
+    # ---- create
     def create(self, kind, user_id, title, category, description):
         title, description = self._validate(title, category, description)
         cls = SUBMISSION_TYPES[kind]
@@ -151,7 +154,7 @@ class SubmissionManager:
             f"INSERT INTO {cls.TABLE} (user_id, title, description, category) VALUES (?,?,?,?)",
             (user_id, title, description, category))
 
-  
+    # ---- read
     def _select(self, kind, viewer_id):
         cls = SUBMISSION_TYPES[kind]
         sql = f"SELECT t.*, u.full_name AS author"
@@ -190,7 +193,7 @@ class SubmissionManager:
         row = self.db.query_one(sql + f" WHERE t.{cls.ID_COLUMN} = ?", (item_id,))
         return cls(row) if row else None
 
-    
+    # ---- update
     def update(self, kind, item_id, user_id, title, category, description):
         item = self.get(kind, item_id)
         if item is None:
@@ -213,6 +216,7 @@ class SubmissionManager:
         self.db.execute(f"UPDATE {cls.TABLE} SET status=?{extra} WHERE {cls.ID_COLUMN}=?",
                         (status, item_id))
 
+    # ---- delete
     def delete(self, kind, item_id, user_id):
         item = self.get(kind, item_id)
         if item is None:
@@ -228,6 +232,7 @@ class SubmissionManager:
         ])
 
 
+# ======================================================================
 class VoteManager:
     def __init__(self, db, submissions):
         self.db = db
@@ -252,6 +257,7 @@ class VoteManager:
         return True
 
 
+# ======================================================================
 class ResponseManager:
     def __init__(self, db):
         self.db = db
@@ -281,13 +287,14 @@ class ResponseManager:
             "ORDER BY r.created_at DESC, r.response_id DESC", (feedback_id,))
 
 
+# ======================================================================
 class ReportData:
     """A report that is ready to be shown or exported."""
 
     def __init__(self, title, date_range, summary, columns, rows):
         self.title = title
         self.date_range = date_range
-        self.summary = summary          
+        self.summary = summary          # list of (label, value)
         self.columns = columns
         self.rows = rows
 
@@ -297,12 +304,14 @@ class ReportGenerator:
         self.db = db
         self.submissions = submissions
 
+    # ---- small helper to filter by date
     @staticmethod
     def _range(column, start, end):
         if start and end:
             return f" AND date({column}, 'localtime') BETWEEN ? AND ?", [start, end]
         return "", []
 
+    # ---- dashboard numbers
     def student_stats(self, user_id):
         one = lambda sql, p=(): self.db.query_one(sql, p)[0]
         return {
@@ -325,10 +334,13 @@ class ReportGenerator:
         }
 
     def recent(self, user_id=None, limit=5):
-        where = "WHERE user_id = ?" if user_id else ""
+        where = "WHERE f.user_id = ?" if user_id else ""
+        where_s = "WHERE s.user_id = ?" if user_id else ""
         p = (user_id,) if user_id else ()
-        sql = (f"SELECT 'Feedback' AS type, title, status, created_at FROM feedback {where} "
-               f"UNION ALL SELECT 'Suggestion', title, status, created_at FROM suggestions {where} "
+        sql = ("SELECT 'Feedback' AS type, f.title AS title, f.status AS status, f.created_at AS created_at, u.full_name AS author "
+               f"FROM feedback f JOIN users u ON u.user_id = f.user_id {where} "
+               "UNION ALL SELECT 'Suggestion', s.title, s.status, s.created_at, u.full_name "
+               f"FROM suggestions s JOIN users u ON u.user_id = s.user_id {where_s} "
                f"ORDER BY created_at DESC LIMIT {int(limit)}")
         return self.db.query(sql, p + p)
 
@@ -340,6 +352,7 @@ class ReportGenerator:
                "ORDER BY votes DESC, t.created_at DESC LIMIT ?")
         return [r for r in self.db.query(sql, params + [limit]) if r["votes"] > 0]
 
+    # ---- chart data
     def by_category(self, kind, start=None, end=None):
         cls = SUBMISSION_TYPES[kind]
         cond, params = self._range("created_at", start, end)
@@ -365,16 +378,18 @@ class ReportGenerator:
         counts = {r["category"] or "Others": r["n"] for r in rows}
         return [(c, counts[c]) for c in CATEGORIES if counts.get(c)]
 
-    def last_days(self, days=7):
+    def last_days(self, days=7, user_id=None):
         """Number of submissions (feedback + suggestions) for each of the last days."""
         today = date.today()
         first = today - timedelta(days=days - 1)
+        who = " WHERE user_id = ?" if user_id else ""
+        p = (user_id,) if user_id else ()
         rows = self.db.query(
             "SELECT d, SUM(n) AS n FROM ("
-            " SELECT date(created_at,'localtime') AS d, COUNT(*) AS n FROM feedback GROUP BY d"
+            f" SELECT date(created_at,'localtime') AS d, COUNT(*) AS n FROM feedback{who} GROUP BY d"
             " UNION ALL"
-            " SELECT date(created_at,'localtime'), COUNT(*) FROM suggestions GROUP BY 1"
-            ") WHERE d >= ? GROUP BY d", (first.isoformat(),))
+            f" SELECT date(created_at,'localtime'), COUNT(*) FROM suggestions{who} GROUP BY 1"
+            ") WHERE d >= ? GROUP BY d", p + p + (first.isoformat(),))
         counts = {r["d"]: r["n"] for r in rows}
         result = []
         for i in range(days):
@@ -382,6 +397,60 @@ class ReportGenerator:
             result.append((day.strftime("%b %d").replace(" 0", " "), counts.get(day.isoformat(), 0)))
         return result
 
+    def daily_series(self, kind, user_id=None, days=7):
+        """Small list of numbers (oldest first) for the mini charts on the KPI cards.
+        kind: 'feedback', 'suggestion', 'votes' (votes received) or 'resolved'."""
+        first = date.today() - timedelta(days=days - 1)
+        params = []
+        if kind == "votes":
+            sql = ("SELECT date(v.created_at,'localtime') AS d, COUNT(*) AS n FROM votes v "
+                   "JOIN suggestions s ON s.suggestion_id = v.suggestion_id WHERE 1=1")
+            if user_id:
+                sql += " AND s.user_id = ?"
+                params.append(user_id)
+            sql += " AND date(v.created_at,'localtime') >= ? GROUP BY d"
+        else:
+            table, column, extra = {
+                "feedback": ("feedback", "created_at", ""),
+                "suggestion": ("suggestions", "created_at", ""),
+                "resolved": ("feedback", "updated_at", " AND status = 'Resolved'"),
+            }[kind]
+            sql = f"SELECT date({column},'localtime') AS d, COUNT(*) AS n FROM {table} WHERE 1=1{extra}"
+            if user_id:
+                sql += " AND user_id = ?"
+                params.append(user_id)
+            sql += f" AND date({column},'localtime') >= ? GROUP BY d"
+        params.append(first.isoformat())
+        counts = {r["d"]: r["n"] for r in self.db.query(sql, params)}
+        return [counts.get((first + timedelta(days=i)).isoformat(), 0) for i in range(days)]
+
+    def resolution(self, user_id=None):
+        """(resolved feedback, all feedback)"""
+        where = " WHERE user_id = ?" if user_id else ""
+        p = (user_id,) if user_id else ()
+        total = self.db.query_one(f"SELECT COUNT(*) FROM feedback{where}", p)[0]
+        done = self.db.query_one(f"SELECT COUNT(*) FROM feedback{where}{' AND' if where else ' WHERE'} status = 'Resolved'", p)[0]
+        return done, total
+
+    def notifications(self, user):
+        """(list of (heading, text, date), show_red_dot) for the bell button."""
+        if user.role == "student":
+            rows = self.db.query(
+                "SELECT f.title, r.response_text, r.created_at, u.full_name FROM responses r "
+                "JOIN feedback f ON f.feedback_id = r.feedback_id JOIN users u ON u.user_id = r.admin_id "
+                "WHERE f.user_id = ? ORDER BY r.created_at DESC, r.response_id DESC LIMIT 5", (user.user_id,))
+            items = [(f"{r['full_name']} replied to \"{r['title']}\"", r["response_text"], r["created_at"])
+                     for r in rows]
+            week_ago = (date.today() - timedelta(days=7)).isoformat()
+            return items, any(fmt_date(i[2]) >= week_ago for i in items)
+        rows = self.db.query(
+            "SELECT 'Feedback' AS type, title, created_at FROM feedback WHERE status='Pending' "
+            "UNION ALL SELECT 'Suggestion', title, created_at FROM suggestions WHERE status='Pending' "
+            "ORDER BY created_at DESC LIMIT 6")
+        items = [(f"New {r['type'].lower()} waiting", r["title"], r["created_at"]) for r in rows]
+        return items, bool(items)
+
+    # ---- full reports (for export)
     def build_report(self, kind, start, end):
         range_text = f"{start} to {end}"
         if kind in ("feedback", "suggestion"):
@@ -458,6 +527,7 @@ def to_iso(ts):
     return fmt_date(ts)
 
 
+# ======================================================================
 class Services:
     """One object that holds all managers, so screens can reach them easily."""
 

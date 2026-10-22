@@ -1,9 +1,9 @@
 """
 widgets.py
 Reusable GUI parts with hover effects and animations:
-    HoverButton, Badge, Card, StatCard, StyledEntry, StyledText, DataTable, Pager,
-    ScrollFrame, Toast, Modal, Sidebar,
-    AnimatedBarChart, AnimatedDonutChart, AnimatedLineChart, AnimatedRankList
+    HoverButton, Badge, Card, KpiCard, StyledEntry, StyledText, DataTable, Pager,
+    ScrollFrame, Toast, Modal, Sidebar (floating, expands on hover), PillSearch, RoundIconButton,
+    CanvasButton, AnimatedBarChart, AnimatedDonutChart, AnimatedLineChart, AnimatedGauge, AnimatedRankList
 """
 import math
 import sys
@@ -11,9 +11,12 @@ import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import ttk
 
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageTk
+
+from icons import icon
 from theme import (C, CATEGORY_COLORS, FONT, PALETTE, STATUS_STYLES, animate, bg_of,
                    clamp, darken, ease_in_out, ease_out_back, ease_out_cubic, ellipsize, font,
-                   lerp_color, lighten, linear, rounded_points, rounded_rect, stop)
+                   lerp_color, lighten, linear, pill_points, rounded_points, rounded_rect, stop)
 
 
 # ======================================================================
@@ -24,25 +27,25 @@ def setup_styles(root):
     style.theme_use("clam")
     style.configure("TCombobox", fieldbackground=C.WHITE, background=C.WHITE, foreground=C.TEXT,
                     bordercolor=C.BORDER, lightcolor=C.BORDER, darkcolor=C.BORDER,
-                    arrowcolor=C.BLUE, padding=7, relief="flat")
+                    arrowcolor=C.PRIMARY, padding=7, relief="flat")
     style.map("TCombobox",
               fieldbackground=[("readonly", C.WHITE)],
               foreground=[("readonly", C.TEXT)],
-              bordercolor=[("focus", C.BLUE), ("active", "#9DB8E8")],
-              lightcolor=[("focus", C.BLUE)], darkcolor=[("focus", C.BLUE)],
+              bordercolor=[("focus", C.PRIMARY), ("active", "#A9C2B3")],
+              lightcolor=[("focus", C.PRIMARY)], darkcolor=[("focus", C.PRIMARY)],
               selectbackground=[("readonly", C.WHITE)], selectforeground=[("readonly", C.TEXT)],
-              arrowcolor=[("active", C.BLUE_DARK)])
+              arrowcolor=[("active", C.PRIMARY_DARK)])
     root.option_add("*TCombobox*Listbox.background", C.WHITE)
     root.option_add("*TCombobox*Listbox.foreground", C.TEXT)
-    root.option_add("*TCombobox*Listbox.selectBackground", C.BLUE)
+    root.option_add("*TCombobox*Listbox.selectBackground", C.PRIMARY)
     root.option_add("*TCombobox*Listbox.selectForeground", C.WHITE)
     root.option_add("*TCombobox*Listbox.font", font(10))
     # slim scrollbar with no arrows
     style.layout("Slim.Vertical.TScrollbar", [("Vertical.Scrollbar.trough", {
         "sticky": "ns", "children": [("Vertical.Scrollbar.thumb", {"expand": "1", "sticky": "nswe"})]})])
-    style.configure("Slim.Vertical.TScrollbar", troughcolor=C.BG, background="#C3CEE4",
-                    bordercolor=C.BG, lightcolor="#C3CEE4", darkcolor="#C3CEE4", gripcount=0, width=8)
-    style.map("Slim.Vertical.TScrollbar", background=[("active", "#9DB0D6")])
+    style.configure("Slim.Vertical.TScrollbar", troughcolor=C.BG, background="#C9CFC8",
+                    bordercolor=C.BG, lightcolor="#C9CFC8", darkcolor="#C9CFC8", gripcount=0, width=8)
+    style.map("Slim.Vertical.TScrollbar", background=[("active", "#AAB5AD")])
 
 
 def make_combo(parent, values, width=18, value=None):
@@ -109,15 +112,16 @@ def set_bg_tree(widget, color):
 #  Buttons, badges, links
 # ======================================================================
 BUTTON_STYLES = {
-    "primary": dict(bg=C.BLUE, hover="#3D8BFF", press=C.BLUE_DARK, fg="#FFFFFF"),
-    "success": dict(bg=C.GREEN, hover="#2BC789", press="#148A5C", fg="#FFFFFF"),
-    "danger": dict(bg=C.RED, hover="#F26469", press="#C23B40", fg="#FFFFFF"),
-    "outline": dict(bg=C.WHITE, hover=C.BLUE_SOFT, press="#CFE0FF", fg=C.BLUE, border=C.BLUE),
-    "gray": dict(bg="#EEF2F9", hover="#E0E7F4", press="#CFD8EA", fg=C.TEXT),
-    "soft": dict(bg=C.BLUE_SOFT, hover="#CFE1FF", press="#B9D3FF", fg=C.BLUE),
-    "soft_red": dict(bg=C.RED_SOFT, hover="#FBCFCF", press="#F7B7B7", fg="#C23B40"),
-    "soft_green": dict(bg=C.GREEN_SOFT, hover="#C5F0DA", press="#AEE6C9", fg="#168A5C"),
-    "soft_orange": dict(bg=C.ORANGE_SOFT, hover="#FFE5B0", press="#FFD98A", fg="#B7791F"),
+    "primary": dict(bg=C.PRIMARY, hover="#52806A", press=C.PRIMARY_DARK, fg="#FFFFFF"),
+    "dark": dict(bg=C.DARK, hover="#35483D", press="#111C17", fg="#FFFFFF"),
+    "success": dict(bg=C.GREEN, hover="#52B286", press="#2E8059", fg="#FFFFFF"),
+    "danger": dict(bg=C.RED, hover="#E56F69", press="#B8403B", fg="#FFFFFF"),
+    "outline": dict(bg=C.WHITE, hover=C.PRIMARY_SOFT, press="#D3E5D9", fg=C.PRIMARY, border=C.PRIMARY),
+    "gray": dict(bg="#F0EEE8", hover="#E6E3DB", press="#DAD7CE", fg=C.TEXT),
+    "soft": dict(bg=C.PRIMARY_SOFT, hover="#D3E7DA", press="#C2DBCB", fg=C.PRIMARY),
+    "soft_red": dict(bg=C.RED_SOFT, hover="#F9D0CD", press="#F4B9B5", fg="#B8403B"),
+    "soft_green": dict(bg=C.GREEN_SOFT, hover="#C9EBD7", press="#B2E0C5", fg="#23805A"),
+    "soft_orange": dict(bg=C.ORANGE_SOFT, hover="#F8DDB4", press="#F3CF98", fg="#B3741C"),
 }
 
 
@@ -125,7 +129,7 @@ class HoverButton(tk.Canvas):
     """A rounded button. The color fades smoothly when the mouse is over it."""
 
     def __init__(self, master, text, command=None, style="primary", width=None, height=38,
-                 radius=10, size=10, pad=36):
+                 radius=12, size=10, pad=36):
         self._style = BUTTON_STYLES[style]
         self._font = tkfont.Font(family=FONT, size=size, weight="bold")
         w = width or self._font.measure(text) + pad
@@ -206,7 +210,7 @@ class HoverButton(tk.Canvas):
             self.itemconfigure(self._label, fill=self._style["fg"])
             self.configure(cursor="hand2")
         else:
-            self._color = "#C9D2E3"
+            self._color = "#CFCFC8"
             self.itemconfigure(self._label, fill="#FFFFFF")
             self.configure(cursor="arrow")
         self.itemconfigure(self._shape, fill=self._color,
@@ -239,7 +243,7 @@ class Badge(tk.Canvas):
     def __init__(self, master, text, bg_color=None, fg_color=None, height=24, size=9):
         if Badge._font is None:
             Badge._font = tkfont.Font(family=FONT, size=size, weight="bold")
-        default = STATUS_STYLES.get(text, (C.BLUE_SOFT, C.BLUE))
+        default = STATUS_STYLES.get(text, (C.PRIMARY_SOFT, C.PRIMARY))
         bg_color, fg_color = bg_color or default[0], fg_color or default[1]
         w = Badge._font.measure(text) + 26
         super().__init__(master, width=w, height=height, bg=bg_of(master), highlightthickness=0, bd=0)
@@ -248,7 +252,7 @@ class Badge(tk.Canvas):
 
 
 def category_badge(master, category):
-    color = CATEGORY_COLORS.get(category, C.BLUE)
+    color = CATEGORY_COLORS.get(category, C.PRIMARY)
     return Badge(master, category, bg_color=lighten(color, 0.82), fg_color=darken(color, 0.25))
 
 
@@ -256,11 +260,11 @@ class LinkLabel(tk.Label):
     """Blue text that gets an underline when the mouse is over it."""
 
     def __init__(self, master, text, command=None, size=9):
-        super().__init__(master, text=text, fg=C.BLUE, bg=bg_of(master), font=font(size, "bold"),
+        super().__init__(master, text=text, fg=C.PRIMARY, bg=bg_of(master), font=font(size, "bold"),
                          cursor="hand2")
         self._normal, self._under = font(size, "bold"), (FONT, size, "bold underline")
-        self.bind("<Enter>", lambda e: self.configure(font=self._under, fg=C.BLUE_DARK))
-        self.bind("<Leave>", lambda e: self.configure(font=self._normal, fg=C.BLUE))
+        self.bind("<Enter>", lambda e: self.configure(font=self._under, fg=C.PRIMARY_DARK))
+        self.bind("<Leave>", lambda e: self.configure(font=self._normal, fg=C.PRIMARY))
         if command:
             self.bind("<Button-1>", lambda e: command())
 
@@ -268,70 +272,405 @@ class LinkLabel(tk.Label):
 # ======================================================================
 #  Cards
 # ======================================================================
-class Card(tk.Frame):
-    """White box with a border that lights up when the mouse is over it."""
+def rr_mask(w, h, r, scale=3):
+    """Smooth rounded-rectangle mask (white = visible)."""
+    w, h = max(1, int(w)), max(1, int(h))
+    big = Image.new("L", (w * scale, h * scale), 0)
+    ImageDraw.Draw(big).rounded_rectangle([0, 0, w * scale - 1, h * scale - 1], radius=r * scale, fill=255)
+    return big.resize((w, h), Image.LANCZOS)
 
-    def __init__(self, master, accent=C.BLUE, pad=18, hover=True, bg=C.WHITE):
-        super().__init__(master, bg=bg, highlightthickness=2, highlightbackground=C.CARD_BORDER)
-        self.accent, self._anim, self._border = accent, None, C.CARD_BORDER
+
+def gradient_image(w, h, c1, c2, radius):
+    """Rounded rectangle with a soft diagonal color gradient (c1 top-left -> c2 bottom-right)."""
+    w, h = max(1, int(w)), max(1, int(h))
+    horizontal = Image.linear_gradient("L").rotate(90).resize((w, h))
+    vertical = Image.linear_gradient("L").resize((w, h))
+    diagonal = ImageChops.add(horizontal, vertical, scale=2)
+    img = Image.composite(Image.new("RGB", (w, h), c2), Image.new("RGB", (w, h), c1), diagonal).convert("RGBA")
+    img.putalpha(rr_mask(w, h, radius))
+    return img
+
+
+def catmull(points, steps=10):
+    """Smooth curve through a list of (x, y) points. Returns a longer list of points."""
+    if len(points) < 3:
+        return list(points)
+    pts = [points[0]] + list(points) + [points[-1]]
+    out = []
+    for i in range(1, len(pts) - 2):
+        p0, p1, p2, p3 = pts[i - 1], pts[i], pts[i + 1], pts[i + 2]
+        for k in range(steps):
+            t = k / steps
+            t2, t3 = t * t, t * t * t
+            out.append(tuple(0.5 * ((2 * p1[j]) + (-p0[j] + p2[j]) * t
+                                    + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * t2
+                                    + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * t3) for j in (0, 1)))
+    out.append(points[-1])
+    return out
+
+
+def fit_text(text, fnt, avail):
+    """The longest start of the text that fits in avail pixels (no '...')."""
+    if avail <= 6:
+        return ""
+    while text and fnt.measure(text) > avail:
+        text = text[:-1]
+    return text
+
+
+class Card(tk.Frame):
+    """White rounded card with a soft shadow. Put your widgets inside `card.body`.
+    The border lights up when the mouse is over it.
+    (A canvas behind the content draws the rounded shape; the content sets the card's size.)"""
+
+    def __init__(self, master, accent=C.PRIMARY, pad=20, hover=True, bg=C.WHITE, radius=22):
+        super().__init__(master, bg=bg_of(master), highlightthickness=0, bd=0)
+        self.accent, self._r, self._fill = accent, radius, bg
+        self._anim, self._glow_t = None, 0.0
+        self._back = tk.Canvas(self, bg=bg_of(master), highlightthickness=0, bd=0)
+        self._back.place(x=0, y=0, relwidth=1, relheight=1)
+        self._shadow = rounded_rect(self._back, 3, 5, 12, 14, radius, fill=C.SHADOW, outline="")
+        self._shape = rounded_rect(self._back, 0, 0, 10, 10, radius, fill=bg, outline=bg, width=2)
         self.body = tk.Frame(self, bg=bg)
-        self.body.pack(fill="both", expand=True, padx=pad, pady=pad)
+        self.body.pack(fill="both", expand=True, padx=pad, pady=(pad, pad + 4))
+        self._back.bind("<Configure>", self._resize)
         if hover:
-            self.after_idle(lambda: HoverArea(self, lambda: self._glow(self.accent),
-                                              lambda: self._glow(C.CARD_BORDER)))
+            self.after_idle(lambda: HoverArea(self, lambda: self._glow(1.0), lambda: self._glow(0.0)))
+
+    def _resize(self, e):
+        w, h = e.width, e.height
+        r = min(self._r, w / 2, h / 2)
+        self._back.coords(self._shadow, *rounded_points(3, 5, w - 3, h, r))
+        self._back.coords(self._shape, *rounded_points(1, 1, w - 1, h - 4, r))
 
     def _glow(self, target):
         stop(self._anim)
-        start = self._border
+        start = self._glow_t
 
         def step(t):
-            self._border = lerp_color(start, target, t)
-            self.configure(highlightbackground=self._border)
+            self._glow_t = start + (target - start) * t
+            edge = lerp_color(self._fill, self.accent, 0.5 * self._glow_t)
+            self._back.itemconfigure(self._shape, outline=edge)
+            self._back.itemconfigure(self._shadow, fill=lerp_color(C.SHADOW, "#CFCBC0", self._glow_t))
         self._anim = animate(self, 200, step)
 
 
-class StatCard(Card):
-    """Number card with an icon. The number counts up when it appears."""
+class KpiCard(tk.Canvas):
+    """Number card: label, big number that counts up, and a small animated chart.
+    variant: 'bars' (mini bar chart), 'wave' (icon + wave line), 'plain' (icon only),
+             'accent' (green gradient card with a white wave)."""
+    HEIGHT = 116
 
-    def __init__(self, master, label, glyph, color, soft_color, delay=0):
-        super().__init__(master, accent=color, pad=16)
-        self._shown, self._anim_num, self._delay = 0, None, delay
-        icon = tk.Canvas(self.body, width=46, height=46, bg=C.WHITE, highlightthickness=0)
-        rounded_rect(icon, 1, 1, 45, 45, 14, fill=soft_color, outline="")
-        icon.create_text(23, 23, text=glyph, fill=color, font=font(17, "bold"))
-        icon.pack(anchor="w")
-        tk.Label(self.body, text=label, bg=C.WHITE, fg=C.MUTED, font=font(9, "bold")).pack(anchor="w", pady=(10, 0))
-        self.number = tk.Label(self.body, text="0", bg=C.WHITE, fg=C.TEXT, font=font(24, "bold"))
-        self.number.pack(anchor="w")
+    def __init__(self, master, label, icon_name, color, variant="bars", delay=0):
+        super().__init__(master, bg=bg_of(master), highlightthickness=0, bd=0, width=10, height=self.HEIGHT)
+        self.label, self.icon_name, self.color, self.variant = label, icon_name, color, variant
+        self._delay, self._shown, self._series, self._sp = delay, 0.0, [], 1.0
+        self._glow, self._ga, self._va, self._sa = 0.0, None, None, None
+        self._grad, self._grad_key = None, None
+        self.bind("<Configure>", lambda e: self._render())
+        self.bind("<Enter>", lambda e: self._glow_to(1.0))
+        self.bind("<Leave>", lambda e: self._glow_to(0.0))
 
     def set_value(self, value):
-        stop(self._anim_num)
+        stop(self._va)
         start, delay = self._shown, self._delay
         self._delay = 0
 
         def step(t):
             self._shown = start + (value - start) * t
-            self.number.configure(text=str(int(round(self._shown))))
-        self._anim_num = animate(self, 900, step, delay=delay)
+            self._render()
+        self._va = animate(self, 900, step, delay=delay)
+
+    def set_series(self, values):
+        self._series = list(values)
+        stop(self._sa)
+        self._sp = 0.0
+
+        def step(t):
+            self._sp = t
+            self._render()
+        self._sa = animate(self, 1200, step, delay=self._delay)
+
+    def _glow_to(self, target):
+        stop(self._ga)
+        start = self._glow
+
+        def step(t):
+            self._glow = start + (target - start) * t
+            self._render()
+        self._ga = animate(self, 200, step)
+
+    def _render(self):
+        w, h = self.winfo_width(), self.winfo_height()
+        if w < 60 or h < 40:
+            return
+        self.delete("all")
+        r, body_h, pad = 22, h - 4, 22
+        accent = self.variant == "accent"
+        rounded_rect(self, 3, 5, w - 3, h, r, fill=lerp_color(C.SHADOW, "#CFCBC0", self._glow), outline="")
+        if accent:
+            if self._grad_key != (w, body_h):
+                self._grad = ImageTk.PhotoImage(gradient_image(w, body_h, "#86AA95", "#2F5744", r))
+                self._grad_key = (w, body_h)
+            self.create_image(0, 0, anchor="nw", image=self._grad)
+            label_fg, num_fg, line = "#DCEBE1", "#FFFFFF", "#FFFFFF"
+        else:
+            edge = lerp_color(C.WHITE, self.color, 0.5 * self._glow)
+            rounded_rect(self, 1, 1, w - 1, body_h - 1, r, fill=C.WHITE, outline=edge, width=2)
+            label_fg, num_fg, line = C.MUTED, C.TEXT, self.color
+        tx = pad
+        if self.variant in ("wave", "plain"):
+            cy = body_h / 2
+            self.create_oval(pad, cy - 21, pad + 42, cy + 21, fill=lighten(self.color, 0.84), outline="")
+            self.create_image(pad + 21, cy, image=icon(self.icon_name, self.color, 22))
+            tx = pad + 42 + 14
+        self.create_text(tx, 28, text=self.label, anchor="w", fill=label_fg, font=font(9, "bold"))
+        self.create_text(tx, body_h - 36, text=str(int(round(self._shown))), anchor="w", fill=num_fg,
+                         font=font(24, "bold"))
+        cw = 70 if self.variant == "wave" else 84
+        x0, y_top, y_bot = w - pad - cw, 46, body_h - 20
+        if self._series and self.variant != "plain" and x0 > tx + 64:
+            self._draw_chart(x0, cw, y_top, y_bot, line)
+
+    def _draw_chart(self, x0, cw, y_top, y_bot, line):
+        vals, n = self._series, len(self._series)
+        top = max(max(vals), 1)
+        if self.variant == "bars":
+            bw = 6
+            gap = (cw - n * bw) / max(n - 1, 1)
+            for i, v in enumerate(vals):
+                p = ease_out_cubic(clamp((self._sp * (n + 3) - i) / 3))
+                bh = max(7, (y_bot - y_top) * v / top) * p
+                x = x0 + i * (bw + gap)
+                color = self.color if i >= n - 3 else lighten(self.color, 0.62)
+                rounded_rect(self, x, y_bot - bh, x + bw, y_bot, 3, fill=color, outline="")
+        else:
+            pts = [(x0 + cw * i / max(n - 1, 1), y_bot - (y_bot - y_top) * (0.1 + 0.9 * v / top))
+                   for i, v in enumerate(vals)]
+            curve = catmull(pts, 8)
+            shown = curve[:max(2, int(len(curve) * self._sp))]
+            if len(shown) >= 2:
+                self.create_line([c for p in shown for c in p], fill=line, width=2.6, capstyle="round",
+                                 joinstyle="round")
+
+
+class AnimatedGauge(tk.Canvas):
+    """Half-circle gauge that fills up. Shows a percent in the middle."""
+
+    def __init__(self, master, height=180, color=C.PRIMARY):
+        super().__init__(master, height=height, bg=bg_of(master), highlightthickness=0, bd=0)
+        self.color, self._pct, self._shown, self._caption, self._anim, self._hover = color, 0.0, 0.0, "", None, False
+        self.bind("<Configure>", lambda e: self._render())
+        self.bind("<Enter>", lambda e: self._set_hover(True))
+        self.bind("<Leave>", lambda e: self._set_hover(False))
+
+    def _set_hover(self, value):
+        self._hover = value
+        self._render()
+
+    def set_value(self, pct, caption=""):
+        self._pct, self._caption = max(0.0, min(100.0, pct)), caption
+        stop(self._anim)
+        start = self._shown
+
+        def step(t):
+            self._shown = start + (self._pct - start) * t
+            self._render()
+        self._anim = animate(self, 1200, step)
+
+    def _render(self):
+        w, h = self.winfo_width(), self.winfo_height()
+        if w < 60 or h < 60:
+            return
+        self.delete("all")
+        thick = 24 + (3 if self._hover else 0)
+        radius = max(40, min(w / 2 - 22, h - 56))
+        cx, cy = w / 2, h - 44
+        mid = radius - thick / 2
+        box = (cx - mid, cy - mid, cx + mid, cy + mid)
+        self.create_arc(*box, start=180, extent=-180, style="arc", outline=C.PRIMARY_SOFT, width=thick)
+        frac = self._shown / 100
+        if frac > 0.004:
+            self.create_arc(*box, start=180, extent=-180 * frac, style="arc", outline=self.color, width=thick)
+        if frac > 0.02:
+            ang = math.radians(180 - 180 * frac)                  # little tick at the end of the fill
+            r1, r2 = radius - thick - 4, radius + 7
+            self.create_line(cx + r1 * math.cos(ang), cy - r1 * math.sin(ang), cx + r2 * math.cos(ang),
+                             cy - r2 * math.sin(ang), fill=C.DARK, width=3, capstyle="round")
+        size = max(14, min(26, int(radius / 3.4)))              # smaller card -> smaller number
+        self.create_text(cx, cy - size * 0.45, text=f"{int(round(self._shown))}%", fill=C.TEXT, font=font(size, "bold"))
+        if self._caption:
+            self.create_text(cx, cy + 28, text=self._caption, fill=C.MUTED, font=font(9))
+
+
+class PillSearch(tk.Canvas):
+    """White pill search box with a dark round search button."""
+
+    def __init__(self, master, placeholder="Search...", command=None, width=330, height=48):
+        super().__init__(master, width=width, height=height, bg=bg_of(master), highlightthickness=0, bd=0)
+        self.command, self._fill, self._anim = command, C.DARK, None
+        rounded_rect(self, 0, 0, width, height, height / 2, fill=C.WHITE, outline="")
+        self.entry = StyledEntry(self, placeholder=placeholder, width=20, size=10, bare=True)
+        self.create_window(24, height / 2, window=self.entry, anchor="w", width=width - 24 - 64, height=28)
+        self._btn = self.create_oval(width - 43, 5, width - 5, height - 5, fill=C.DARK, outline="")
+        self._ico = self.create_image(width - 24, height / 2, image=icon("search", "#FFFFFF", 18))
+        for item in (self._btn, self._ico):
+            self.tag_bind(item, "<Enter>", lambda e: self._tween(C.PRIMARY))
+            self.tag_bind(item, "<Leave>", lambda e: self._tween(C.DARK))
+            self.tag_bind(item, "<Button-1>", lambda e: self._go())
+        self.entry.bind("<Return>", lambda e: self._go())
+
+    def _tween(self, target):
+        stop(self._anim)
+        start = self._fill
+
+        def step(t):
+            self._fill = lerp_color(start, target, t)
+            self.itemconfigure(self._btn, fill=self._fill)
+        self._anim = animate(self, 150, step, ease=linear)
+
+    def _go(self):
+        if self.command:
+            self.command(self.entry.value())
+
+
+class RoundIconButton(tk.Canvas):
+    """White round button with an icon (and an optional red dot)."""
+
+    def __init__(self, master, icon_name, command=None, size=48):
+        super().__init__(master, width=size, height=size, bg=bg_of(master), highlightthickness=0, bd=0,
+                         cursor="hand2")
+        self.command, self._fill, self._anim = command, C.WHITE, None
+        self._circle = self.create_oval(0, 0, size, size, fill=C.WHITE, outline="")
+        self.create_image(size / 2, size / 2, image=icon(icon_name, C.DARK, 22))
+        self._dot = self.create_oval(size - 17, 8, size - 8, 17, fill=C.RED, outline=C.WHITE, width=2, state="hidden")
+        self.bind("<Enter>", lambda e: self._tween(C.PRIMARY_SOFT))
+        self.bind("<Leave>", lambda e: self._tween(C.WHITE))
+        self.bind("<Button-1>", lambda e: command() if command else None)
+
+    def set_dot(self, visible):
+        self.itemconfigure(self._dot, state="normal" if visible else "hidden")
+
+    def _tween(self, target):
+        stop(self._anim)
+        start = self._fill
+
+        def step(t):
+            self._fill = lerp_color(start, target, t)
+            self.itemconfigure(self._circle, fill=self._fill)
+        self._anim = animate(self, 150, step, ease=linear)
+
+
+class CanvasButton:
+    """A rounded button drawn straight on a Canvas (so it can sit on top of a picture)."""
+
+    def __init__(self, canvas, box, text, command, fill, hover, press=None, fg="#FFFFFF", radius=14,
+                 size=11, outline=None, tag="ui"):
+        self.c, self.command, self.fill, self.hover = canvas, command, fill, hover
+        self.press = press or darken(hover, 0.12)
+        self._cur, self._anim = fill, None
+        x1, y1, x2, y2 = box
+        uid = f"btn{id(self)}"
+        self.shape = rounded_rect(canvas, x1, y1, x2, y2, radius, fill=fill, outline=outline or fill, width=1.5,
+                                  tags=(tag, uid))
+        self.label = canvas.create_text((x1 + x2) / 2, (y1 + y2) / 2, text=text, fill=fg,
+                                        font=font(size, "bold"), tags=(tag, uid))
+        canvas.tag_bind(uid, "<Enter>", lambda e: self._enter())
+        canvas.tag_bind(uid, "<Leave>", lambda e: self._leave())
+        canvas.tag_bind(uid, "<ButtonPress-1>", lambda e: self._paint(self.press))
+        canvas.tag_bind(uid, "<ButtonRelease-1>", lambda e: self._click())
+
+    def _paint(self, color):
+        self._cur = color
+        self.c.itemconfigure(self.shape, fill=color)
+
+    def _fade(self, target):
+        stop(self._anim)
+        start = self._cur
+        self._anim = animate(self.c, 150, lambda t: self._paint(lerp_color(start, target, t)), ease=linear)
+
+    def _enter(self):
+        self.c.configure(cursor="hand2")
+        self._fade(self.hover)
+
+    def _leave(self):
+        self.c.configure(cursor="")
+        self._fade(self.fill)
+
+    def _click(self):
+        self._fade(self.hover)
+        if self.command:
+            self.command()
+
+
+def canvas_link(canvas, x, y, text, command, color=C.PRIMARY, hover=C.PRIMARY_DARK, size=10,
+                anchor="center", tag="ui", bold=True):
+    """Clickable text on a Canvas. Gets an underline when the mouse is over it."""
+    weight = "bold" if bold else "normal"
+    item = canvas.create_text(x, y, text=text, fill=color, font=font(size, weight), anchor=anchor, tags=(tag,))
+
+    def enter(_e):
+        canvas.itemconfigure(item, fill=hover, font=(FONT, size, weight + " underline"))
+        canvas.configure(cursor="hand2")
+
+    def leave(_e):
+        canvas.itemconfigure(item, fill=color, font=font(size, weight))
+        canvas.configure(cursor="")
+    canvas.tag_bind(item, "<Enter>", enter)
+    canvas.tag_bind(item, "<Leave>", leave)
+    canvas.tag_bind(item, "<Button-1>", lambda e: command())
+    return item
+
+
+def card_fan_image(w=300, h=170):
+    """Picture of three tilted cards (used on the 'Have an idea?' banner)."""
+    S = 3
+    canvas = Image.new("RGBA", (w * S, h * S), (0, 0, 0, 0))
+    specs = [(-17, "#CFE3D6", C.PRIMARY, "mail", 36), (0, "#8FB29E", "#FFFFFF", "bulb", 0),
+             (17, "#2F5744", "#FFFFFF", "vote", 48)]
+    cw, ch = 118 * S, 76 * S
+    for angle, fill, ink, name, dy in specs:
+        card = gradient_image(cw, ch, lighten(fill, 0.12), fill, 14 * S)
+        d = ImageDraw.Draw(card)
+        d.rounded_rectangle([14 * S, 44 * S, 74 * S, 49 * S], radius=3 * S, fill=ink)
+        d.rounded_rectangle([14 * S, 55 * S, 48 * S, 60 * S], radius=3 * S, fill=ink)
+        glyph = icon_image(name, ink, 24 * S)
+        card.alpha_composite(glyph, (14 * S, 12 * S))
+        rotated = card.rotate(angle, expand=True, resample=Image.BICUBIC)
+        shadow = Image.new("RGBA", rotated.size, (0, 0, 0, 0))
+        shadow.putalpha(rotated.getchannel("A").point(lambda v: int(v * 0.25)))
+        shadow = shadow.filter(ImageFilter.GaussianBlur(7 * S))
+        x = (w * S - rotated.width) // 2 + int(angle * 3.2 * S)
+        y = int((h * S - rotated.height) // 2 + (dy - 20) * S / 3)
+        canvas.alpha_composite(shadow, (max(0, x), max(0, y + 8 * S)))
+        canvas.alpha_composite(rotated, (max(0, x), max(0, y)))
+    return canvas.resize((w, h), Image.LANCZOS)
+
+
+def icon_image(name, color, size):
+    from icons import render
+    return render(name, color, size, 1.9)
 
 
 # ======================================================================
 #  Inputs
 # ======================================================================
 class StyledEntry(tk.Entry):
-    """Entry with placeholder text, hover color and a blue glow when focused."""
+    """Entry with placeholder text, hover color and a green glow when focused.
+    bare=True removes the border (used on the glass login card, where the box is drawn by the screen)."""
 
-    def __init__(self, master, placeholder="", password=False, width=30, size=10):
-        super().__init__(master, relief="flat", bg=C.WHITE, fg=C.TEXT, insertbackground=C.BLUE,
-                         highlightthickness=2, highlightbackground=C.BORDER, highlightcolor=C.BLUE,
-                         font=font(size), width=width, bd=6)
-        self._placeholder, self._password = placeholder, password
+    def __init__(self, master, placeholder="", password=False, width=30, size=10, bare=False, bg=C.WHITE):
+        super().__init__(master, relief="flat", bg=bg, fg=C.TEXT, insertbackground=C.PRIMARY,
+                         highlightthickness=0 if bare else 2, highlightbackground=C.BORDER,
+                         highlightcolor=C.PRIMARY, font=font(size), width=width, bd=0 if bare else 6)
+        self._placeholder, self._password, self._bare = placeholder, password, bare
         self._has_ph, self._anim, self._focused = False, None, False
         self._show_placeholder()
         self.bind("<FocusIn>", self._focus_in)
         self.bind("<FocusOut>", self._focus_out)
-        self.bind("<Enter>", lambda e: self._hover("#9DB8E8"))
-        self.bind("<Leave>", lambda e: self._hover(C.BORDER))
+        if not bare:
+            self.bind("<Enter>", lambda e: self._hover("#A9C2B3"))
+            self.bind("<Leave>", lambda e: self._hover(C.BORDER))
 
     def _hover(self, color):
         if not self._focused:
@@ -342,10 +681,11 @@ class StyledEntry(tk.Entry):
 
     def _focus_in(self, _e):
         self._focused = True
-        stop(self._anim)
-        self.configure(highlightcolor=C.BORDER)
-        self._anim = animate(self, 180, lambda t: self.configure(
-            highlightcolor=lerp_color(C.BORDER, C.BLUE, t)), ease=linear)
+        if not self._bare:
+            stop(self._anim)
+            self.configure(highlightcolor=C.BORDER)
+            self._anim = animate(self, 180, lambda t: self.configure(
+                highlightcolor=lerp_color(C.BORDER, C.PRIMARY, t)), ease=linear)
         if self._has_ph:
             self.delete(0, "end")
             self._has_ph = False
@@ -353,13 +693,14 @@ class StyledEntry(tk.Entry):
 
     def _focus_out(self, _e):
         self._focused = False
-        self.configure(highlightbackground=C.BORDER)
+        if not self._bare:
+            self.configure(highlightbackground=C.BORDER)
         self._show_placeholder()
 
     def _show_placeholder(self):
         if self._placeholder and not super().get():
             self._has_ph = True
-            self.configure(fg="#9AA6BE", show="")
+            self.configure(fg="#A3ADA6", show="")
             self.insert(0, self._placeholder)
 
     def value(self, strip=True):
@@ -397,17 +738,17 @@ class StyledText(tk.Frame):
         self.limit = limit
         self.text = tk.Text(self, height=height, wrap="word", relief="flat", bg=C.WHITE, fg=C.TEXT,
                             font=font(10), highlightthickness=2, highlightbackground=C.BORDER,
-                            highlightcolor=C.BLUE, bd=8, insertbackground=C.BLUE, undo=True)
+                            highlightcolor=C.PRIMARY, bd=8, insertbackground=C.PRIMARY, undo=True)
         self.text.pack(fill="both", expand=True)
         self.counter = tk.Label(self, text=f"0/{limit}", bg=bg, fg=C.MUTED, font=font(8))
         self.counter.pack(anchor="e", pady=(3, 0))
-        self._hint = tk.Label(self.text, text=placeholder, bg=C.WHITE, fg="#9AA6BE", font=font(10),
+        self._hint = tk.Label(self.text, text=placeholder, bg=C.WHITE, fg="#A3ADA6", font=font(10),
                               cursor="xterm", justify="left", wraplength=420)
         self._hint.bind("<Button-1>", lambda e: self.text.focus_set())
         self.text.bind("<Key>", lambda e: self.after_idle(self._changed))
         self.text.bind("<<Paste>>", lambda e: self.after_idle(self._changed))
         self.text.bind("<<Cut>>", lambda e: self.after_idle(self._changed))
-        self.text.bind("<Enter>", lambda e: self.text.configure(highlightbackground="#9DB8E8"))
+        self.text.bind("<Enter>", lambda e: self.text.configure(highlightbackground="#A9C2B3"))
         self.text.bind("<Leave>", lambda e: self.text.configure(highlightbackground=C.BORDER))
         self._changed()
 
@@ -554,11 +895,11 @@ class DataTable(tk.Frame):
         self._reveal_jobs = []
         self._fonts = {"normal": tkfont.Font(family=FONT, size=10),
                        "bold": tkfont.Font(family=FONT, size=10, weight="bold")}
-        header = tk.Frame(self, bg="#F5F8FD")
+        header = tk.Frame(self, bg="#F6F4EF")
         header.pack(fill="x")
         self._grid_columns(header)
         for i, col in enumerate(columns):
-            tk.Label(header, text=col.title, bg="#F5F8FD", fg=C.MUTED, font=font(9, "bold"),
+            tk.Label(header, text=col.title, bg="#F6F4EF", fg=C.MUTED, font=font(9, "bold"),
                      anchor="w").grid(row=0, column=i, sticky="w", padx=10, pady=9)
         self.body = tk.Frame(self, bg=C.WHITE, height=(row_height + 1) * page_size)
         self.body.pack(fill="x")
@@ -625,7 +966,7 @@ class DataTable(tk.Frame):
         for i, col in enumerate(self.columns):
             self._make_cell(frame, i, col, row, texts)
         frame.bind("<Configure>", lambda e: self._fit_texts(e.width, texts))
-        tk.Frame(outer, bg="#EDF1F8", height=1).pack(fill="x")
+        tk.Frame(outer, bg="#EEECE6", height=1).pack(fill="x")
         HoverArea(frame, lambda f=frame: self._tint(f, C.ROW_HOVER), lambda f=frame: self._tint(f, C.WHITE))
         return outer
 
@@ -674,7 +1015,7 @@ class DataTable(tk.Frame):
 # ======================================================================
 class Toast:
     COLORS = {"success": (C.GREEN, "\u2713"), "error": (C.RED, "\u2715"),
-              "info": (C.BLUE, "\u2139"), "warning": (C.ORANGE, "!")}
+              "info": (C.PRIMARY, "\u2139"), "warning": (C.ORANGE, "!")}
 
     def __init__(self, root):
         self.root, self.frame, self._anim, self._job = root, None, None, None
@@ -728,7 +1069,7 @@ class Toast:
 #  Modal window
 # ======================================================================
 class Modal(tk.Toplevel):
-    def __init__(self, root, title, width=520, accent=C.BLUE):
+    def __init__(self, root, title, width=520, accent=C.PRIMARY):
         super().__init__(root)
         self.withdraw()
         self.root = root
@@ -774,7 +1115,7 @@ class Modal(tk.Toplevel):
 
 
 def confirm(root, title, message, on_yes, yes_text="Yes, delete", style="danger"):
-    m = Modal(root, title, width=440, accent=C.RED if style == "danger" else C.BLUE)
+    m = Modal(root, title, width=440, accent=C.RED if style == "danger" else C.PRIMARY)
     tk.Label(m.body, text=message, bg=C.WHITE, fg=C.MUTED, font=font(10), wraplength=380,
              justify="left").pack(anchor="w")
     HoverButton(m.footer, yes_text, lambda: (m.close(), on_yes()), style).pack(side="right")
@@ -783,111 +1124,131 @@ def confirm(root, title, message, on_yes, yes_text="Yes, delete", style="danger"
 
 
 # ======================================================================
-#  Sidebar
+#  Sidebar (floating, icons)
 # ======================================================================
-class NavItem(tk.Canvas):
-    def __init__(self, master, key, label, icon, command, width=232):
-        super().__init__(master, width=width, height=46, bg=C.NAVY, highlightthickness=0, bd=0,
-                         cursor="hand2")
-        self.key, self.command, self.active = key, command, False
-        self._fill, self._text, self._shift, self._anim = C.NAVY, "#C5D5F5", 0.0, None
-        self._bar = 0.0
-        self._bw = width
-        self._shape = rounded_rect(self, 12, 3, width - 12, 43, 12, fill=C.NAVY, outline="")
-        self._accent = self.create_rectangle(12, 14, 12, 32, fill="white", outline="", state="hidden")
-        self._icon = self.create_text(38, 23, text=icon, fill=self._text, font=font(13))
-        self._label = self.create_text(62, 23, text=label, fill=self._text, font=font(10, "bold"), anchor="w")
-        self.bind("<Enter>", lambda e: self._go(C.NAVY_HOVER if not self.active else C.BLUE, "#FFFFFF", 5))
-        self.bind("<Leave>", lambda e: self._go(self._rest_fill(), self._rest_text(), 0))
-        self.bind("<Button-1>", lambda e: self.command(self.key))
-        self.bind("<Configure>", self._resize)
+class Sidebar(tk.Canvas):
+    """Floating white sidebar with round icons. It opens wider (and shows the names)
+    when the mouse is over it, like a drawer."""
+    COLLAPSED, EXPANDED, ROW = 76, 248, 58
 
-    def _rest_fill(self):
-        return C.BLUE if self.active else C.NAVY
+    def __init__(self, master, user, on_navigate, on_logout):
+        super().__init__(master, bg=bg_of(master), highlightthickness=0, bd=0, width=self.COLLAPSED + 6)
+        self.user, self._navigate, self._logout = user, on_navigate, on_logout
+        self.cur_w, self._wa, self._hover = float(self.COLLAPSED), None, None
+        self._fnt = tkfont.Font(family=FONT, size=10, weight="bold")
+        self._fnt_small = tkfont.Font(family=FONT, size=9)
+        self._shadow = rounded_rect(self, 3, 5, 80, 100, 38, fill=C.SHADOW, outline="")
+        self._pill = rounded_rect(self, 0, 0, 76, 96, 38, fill=C.WHITE, outline="")
+        self.items = []
+        for key, label, icon_name in user.menu_items():
+            if key != "profile":
+                self.items.append(self._make_item(key, label, icon_name, "top"))
+        self.items.append(self._make_item("logout", "Log out", "logout", "bottom"))
+        self.items.append(self._make_item("profile", user.full_name, None, "avatar"))
+        self._dot_glow = self.create_oval(0, 0, 1, 1, fill=C.PRIMARY_SOFT, outline="")
+        self._dot_core = self.create_oval(0, 0, 1, 1, fill="#35C98F", outline="")
+        self._dot_text = self.create_text(78, 0, text="Live sync", anchor="w", fill=C.MUTED, font=font(9))
+        self._phase, self._flash = 0.0, 0
+        self.bind("<Configure>", lambda e: self._layout())
+        self.bind("<Motion>", self._motion)
+        self.bind("<Enter>", lambda e: self._expand(self.EXPANDED))
+        self.bind("<Leave>", self._leave)
+        self.bind("<Button-1>", self._click)
+        self._pulse()
 
-    def _rest_text(self):
-        return "#FFFFFF" if self.active else "#C5D5F5"
+    # ------------------------------------------------ items
+    def _make_item(self, key, label, icon_name, zone):
+        item = {"key": key, "label": label, "icon": icon_name, "zone": zone, "y": 0, "h": 0.0,
+                "active": False, "anim": None, "state": None}
+        item["hl"] = self.create_polygon(pill_points(12, 0, 64, 50), fill=C.WHITE, outline="")
+        if zone == "avatar":
+            item["ring"] = self.create_oval(0, 0, 1, 1, fill=C.DARK, outline="")
+            item["initial"] = self.create_text(0, 0, text=self.user.initial, fill="white", font=font(12, "bold"))
+        else:
+            item["ic"] = self.create_image(0, 0, image=icon(icon_name, C.MUTED, 22))
+        item["tx"] = self.create_text(78, 0, text="", anchor="w", fill=C.TEXT, font=self._fnt)
+        self._paint(item)
+        return item
 
-    def _resize(self, e):
-        self._bw = e.width
-        self.coords(self._shape, *rounded_points(12, 3, e.width - 12, 43, 12))
+    def _paint(self, item):
+        active, h = item["active"], item["h"]
+        fill = C.PRIMARY if active else lerp_color(C.WHITE, C.PRIMARY_SOFT, h)
+        self.itemconfigure(item["hl"], fill=fill)
+        self.itemconfigure(item["tx"], fill="#FFFFFF" if active else C.TEXT)
+        if item["zone"] == "avatar":
+            self.itemconfigure(item["ring"], outline=C.PRIMARY_LIGHT if (active or h > 0.5) else "", width=3)
+        else:
+            state = "active" if active else ("hover" if h > 0.5 else "normal")
+            if state != item["state"]:
+                item["state"] = state
+                color = {"active": "#FFFFFF", "hover": C.PRIMARY, "normal": C.MUTED}[state]
+                self.itemconfigure(item["ic"], image=icon(item["icon"], color, 22))
 
-    def _go(self, fill, text, shift):
-        stop(self._anim)
-        f0, t0, s0 = self._fill, self._text, self._shift
+    def _tween_hover(self, item, target):
+        stop(item["anim"])
+        start = item["h"]
 
         def step(t):
-            self._fill, self._text = lerp_color(f0, fill, t), lerp_color(t0, text, t)
-            self._shift = s0 + (shift - s0) * t
-            self.itemconfigure(self._shape, fill=self._fill)
-            self.itemconfigure(self._icon, fill=self._text)
-            self.itemconfigure(self._label, fill=self._text)
-            self.coords(self._icon, 38 + self._shift, 23)
-            self.coords(self._label, 62 + self._shift, 23)
-        self._anim = animate(self, 170, step, ease=linear)
+            item["h"] = start + (target - start) * t
+            self._paint(item)
+        item["anim"] = animate(self, 160, step, ease=linear)
 
-    def set_active(self, active):
-        self.active = active
-        self._go(self._rest_fill(), self._rest_text(), 0)
-        start = self._bar
-        target = 4.0 if active else 0.0
+    def set_active(self, key):
+        for item in self.items:
+            item["active"] = item["key"] == key
+            self._paint(item)
 
-        def bar(t):
-            self._bar = start + (target - start) * t
-            self.coords(self._accent, 12, 14, 12 + self._bar, 32)
-            self.itemconfigure(self._accent, state="normal" if self._bar > 0.6 else "hidden")
-        animate(self, 260, bar, ease=ease_out_back)
+    # ------------------------------------------------ layout
+    def _layout(self):
+        h = max(self.winfo_height(), 300)
+        w = self.cur_w
+        pill_h = h - 6
+        r = min(38, w / 2)
+        self.coords(self._shadow, *rounded_points(3, 5, w + 3, h - 1, r))
+        self.coords(self._pill, *rounded_points(0, 0, w, pill_h, r))
+        avatar_y = pill_h - 46
+        logout_y = avatar_y - self.ROW
+        top_i = 0
+        for item in self.items:
+            if item["zone"] == "top":
+                y = 56 + top_i * self.ROW
+                top_i += 1
+            elif item["zone"] == "bottom":
+                y = logout_y
+            else:
+                y = avatar_y
+            item["y"] = y
+            self.coords(item["hl"], *pill_points(12, y - 25, w - 12, y + 25))
+            if item["zone"] == "avatar":
+                self.coords(item["ring"], 38 - 19, y - 19, 38 + 19, y + 19)
+                self.coords(item["initial"], 38, y)
+            else:
+                self.coords(item["ic"], 38, y)
+            self.coords(item["tx"], 78, y)
+            self.itemconfigure(item["tx"], text=fit_text(item["label"], self._fnt, w - 78 - 18))
+        dot_y = logout_y - 44
+        self.coords(self._dot_text, 78, dot_y)
+        self.itemconfigure(self._dot_text, text=fit_text("Live sync", self._fnt_small, w - 78 - 18))
+        self._dot_y = dot_y
+        self._place_dot()
 
-
-class Sidebar(tk.Frame):
-    def __init__(self, master, user, on_navigate, on_logout, width=232):
-        super().__init__(master, bg=C.NAVY, width=width)
-        self.pack_propagate(False)
-        self.items = {}
-        # --- profile block
-        top = tk.Frame(self, bg=C.NAVY)
-        top.pack(fill="x", padx=18, pady=(24, 18))
-        avatar = tk.Canvas(top, width=44, height=44, bg=C.NAVY, highlightthickness=0)
-        avatar.create_oval(1, 1, 43, 43, fill=C.BLUE, outline="#5B9BFF", width=2)
-        avatar.create_text(22, 22, text=user.initial, fill="white", font=font(15, "bold"))
-        avatar.pack(side="left")
-        names = tk.Frame(top, bg=C.NAVY)
-        names.pack(side="left", padx=11)
-        tk.Label(names, text=user.role.capitalize(), bg=C.NAVY, fg="#8FB4F5", font=font(8, "bold")).pack(anchor="w")
-        tk.Label(names, text=user.full_name if len(user.full_name) < 17 else user.full_name[:15] + "..",
-                 bg=C.NAVY, fg="white", font=font(11, "bold")).pack(anchor="w")
-        tk.Frame(self, bg=C.NAVY_HOVER, height=1).pack(fill="x", padx=18, pady=(0, 12))
-        # --- menu
-        for key, label, icon in user.menu_items():
-            item = NavItem(self, key, label, icon, on_navigate, width)
-            item.pack(fill="x", pady=1)
-            self.items[key] = item
-        # --- bottom: live sync + logout
-        bottom = tk.Frame(self, bg=C.NAVY)
-        bottom.pack(side="bottom", fill="x", pady=(0, 14))
-        logout = NavItem(bottom, "logout", "Logout", "\u279C", lambda k: on_logout(), width)
-        logout.pack(fill="x")
-        live = tk.Frame(bottom, bg=C.NAVY)
-        live.pack(fill="x", padx=24, pady=(10, 0))
-        self.dot = tk.Canvas(live, width=16, height=16, bg=C.NAVY, highlightthickness=0)
-        self.dot.pack(side="left")
-        self._glow = self.dot.create_oval(2, 2, 14, 14, fill=C.NAVY_HOVER, outline="")
-        self._core = self.dot.create_oval(5, 5, 11, 11, fill="#35E0A1", outline="")
-        tk.Label(live, text="Live sync on", bg=C.NAVY, fg="#8FB4F5", font=font(8)).pack(side="left", padx=6)
-        self._phase, self._flash = 0.0, 0
-        self._pulse()
+    def _place_dot(self):
+        s = (math.sin(self._phase) + 1) / 2
+        r = 4 + 4 * s
+        y = getattr(self, "_dot_y", 0)
+        self.coords(self._dot_glow, 38 - r, y - r, 38 + r, y + r)
+        self.coords(self._dot_core, 34, y - 4, 42, y + 4)
 
     def _pulse(self):
         try:
             self._phase += 0.12
             s = (math.sin(self._phase) + 1) / 2
-            r = 3 + 4 * s
-            self.dot.coords(self._glow, 8 - r, 8 - r, 8 + r, 8 + r)
-            glow = lerp_color(C.NAVY, "#35E0A1" if self._flash == 0 else C.ORANGE, 0.35 * (1 - s) + 0.1)
-            self.dot.itemconfigure(self._glow, fill=glow)
-            self.dot.itemconfigure(self._core, fill="#35E0A1" if self._flash == 0 else C.ORANGE)
+            color = "#35C98F" if self._flash == 0 else C.ORANGE
+            self.itemconfigure(self._dot_glow, fill=lerp_color(C.WHITE, color, 0.12 + 0.3 * (1 - s)))
+            self.itemconfigure(self._dot_core, fill=color)
             if self._flash:
                 self._flash -= 1
+            self._place_dot()
             self.after(40, self._pulse)
         except tk.TclError:
             pass
@@ -895,10 +1256,53 @@ class Sidebar(tk.Frame):
     def flash_sync(self):
         self._flash = 25
 
-    def set_active(self, key):
-        for k, item in self.items.items():
-            if (k == key) != item.active:
-                item.set_active(k == key)
+    # ------------------------------------------------ mouse
+    def _item_at(self, x, y):
+        if not 12 <= x <= self.cur_w - 12:
+            return None
+        for item in self.items:
+            if abs(y - item["y"]) <= 25:
+                return item
+        return None
+
+    def _motion(self, e):
+        item = self._item_at(e.x, e.y)
+        if item is not self._hover:
+            if self._hover is not None:
+                self._tween_hover(self._hover, 0.0)
+            if item is not None:
+                self._tween_hover(item, 1.0)
+            self._hover = item
+        self.configure(cursor="hand2" if item else "")
+
+    def _leave(self, _e):
+        if self._hover is not None:
+            self._tween_hover(self._hover, 0.0)
+            self._hover = None
+        self.configure(cursor="")
+        self._expand(self.COLLAPSED)
+
+    def _click(self, e):
+        item = self._item_at(e.x, e.y)
+        if item is None:
+            return
+        if item["key"] == "logout":
+            self._logout()
+        else:
+            self._navigate(item["key"])
+
+    def _expand(self, target):
+        stop(self._wa)
+        start = self.cur_w
+
+        def step(t):
+            self.cur_w = start + (target - start) * t
+            try:
+                self.place_configure(width=self.cur_w + 6)
+            except tk.TclError:
+                return
+            self._layout()
+        self._wa = animate(self, 240, step)
 
 
 # ======================================================================
@@ -924,7 +1328,7 @@ def draw_tooltip(canvas, x, y, text):
     if py < 4:
         py = y + 18
     px = max(4, px)
-    box = rounded_rect(canvas, px, py, px + tw, py + th, 9, fill=C.NAVY, outline="")
+    box = rounded_rect(canvas, px, py, px + tw, py + th, 9, fill=C.DARK, outline="")
     canvas.coords(t, px + 11, py + 7)
     canvas.tag_raise(t, box)
 
@@ -933,7 +1337,7 @@ class AnimatedBarChart(tk.Canvas):
     """Bars grow up one by one. Hover a bar to make it pop and show its number."""
 
     def __init__(self, master, height=240):
-        super().__init__(master, height=height, bg=C.WHITE, highlightthickness=0)
+        super().__init__(master, height=height, bg=bg_of(master), highlightthickness=0)
         self.labels, self.values, self.colors = [], [], []
         self._shown, self._anim, self._hover, self._mouse, self._bars = [], None, None, (0, 0), []
         self.bind("<Configure>", lambda e: self._render())
@@ -970,7 +1374,7 @@ class AnimatedBarChart(tk.Canvas):
         top_val = step_val * 4
         for i in range(5):
             y = top + ph - ph * i / 4
-            self.create_line(left, y, w - right, y, fill="#E8EDF6", dash=(3, 3) if i else ())
+            self.create_line(left, y, w - right, y, fill="#ECEAE4", dash=(3, 3) if i else ())
             self.create_text(left - 8, y, text=str(step_val * i), anchor="e", fill=C.MUTED, font=font(8))
         slot = pw / n
         bw = min(70, slot * 0.5)
@@ -1014,7 +1418,7 @@ class AnimatedDonutChart(tk.Canvas):
     """Donut that sweeps around when it appears. Hover a slice (or its legend) to pull it out."""
 
     def __init__(self, master, height=240, legend=True):
-        super().__init__(master, height=height, bg=C.WHITE, highlightthickness=0)
+        super().__init__(master, height=height, bg=bg_of(master), highlightthickness=0)
         self.legend = legend
         self.labels, self.values, self.colors = [], [], []
         self._progress, self._anim, self._hover = 1.0, None, None
@@ -1119,11 +1523,11 @@ class AnimatedDonutChart(tk.Canvas):
 
 
 class AnimatedLineChart(tk.Canvas):
-    """Line that draws itself from left to right with a soft colored area under it."""
+    """Smooth line that draws itself from left to right, with a soft area under it."""
 
-    def __init__(self, master, height=240, color=C.BLUE):
-        super().__init__(master, height=height, bg=C.WHITE, highlightthickness=0)
-        self.color, self.labels, self.values = color, [], []
+    def __init__(self, master, height=240, color=C.PRIMARY, unit="submissions"):
+        super().__init__(master, height=height, bg=bg_of(master), highlightthickness=0)
+        self.color, self.unit, self.labels, self.values = color, unit, [], []
         self._progress, self._anim, self._hover, self._pts = 1.0, None, None, []
         self.bind("<Configure>", lambda e: self._render())
         self.bind("<Motion>", self._motion)
@@ -1137,7 +1541,7 @@ class AnimatedLineChart(tk.Canvas):
         def step(t):
             self._progress = t
             self._render()
-        self._anim = animate(self, 1300, step, ease=ease_in_out)
+        self._anim = animate(self, 1400, step, ease=ease_in_out)
 
     def _render(self):
         self.delete("all")
@@ -1145,44 +1549,43 @@ class AnimatedLineChart(tk.Canvas):
         n = len(self.values)
         if w < 60 or h < 60:
             return
-        if n == 0 or sum(self.values) == 0:
+        if n == 0:
             self.create_text(w / 2, h / 2, text="No data yet", fill=C.MUTED, font=font(10))
             return
+        empty = sum(self.values) == 0
         left, right, top, bottom = 38, 22, 24, 34
         pw, ph = w - left - right, h - top - bottom
-        step_val = nice_step(max(self.values))
+        base = top + ph
+        step_val = 1 if empty else nice_step(max(self.values))
         top_val = step_val * 4
+        if empty:
+            self.create_text(w / 2, top + ph * 0.35, text="No activity in this period yet", fill=C.MUTED, font=font(10))
         for i in range(5):
-            y = top + ph - ph * i / 4
-            self.create_line(left, y, w - right, y, fill="#E8EDF6", dash=(3, 3) if i else ())
+            y = base - ph * i / 4
+            self.create_line(left, y, w - right, y, fill="#ECEAE4", dash=(3, 3) if i else ())
             self.create_text(left - 8, y, text=str(step_val * i), anchor="e", fill=C.MUTED, font=font(8))
-        self._pts = [(left + pw * i / max(1, n - 1), top + ph - ph * v / top_val) for i, v in enumerate(self.values)]
+        self._pts = [(left + pw * i / max(1, n - 1), base - ph * v / top_val) for i, v in enumerate(self.values)]
         for i, (x, _y) in enumerate(self._pts):
-            self.create_text(x, top + ph + 17, text=self.labels[i], fill=C.MUTED, font=font(8))
-        pos = self._progress * (n - 1)
-        whole = int(pos)
-        visible = self._pts[:whole + 1]
-        if whole < n - 1:
-            (x0, y0), (x1, y1) = self._pts[whole], self._pts[whole + 1]
-            f = pos - whole
-            visible = visible + [(x0 + (x1 - x0) * f, y0 + (y1 - y0) * f)]
-        if len(visible) >= 2:
-            area = [visible[0][0], top + ph]
-            for x, y in visible:
+            self.create_text(x, base + 17, text=self.labels[i], fill=C.MUTED, font=font(8))
+        curve = [(x, min(base, max(top, y))) for x, y in catmull(self._pts, 12)]
+        x_limit = left + pw * self._progress
+        shown = [p for p in curve if p[0] <= x_limit]
+        if len(shown) >= 2:
+            area = [shown[0][0], base]
+            for x, y in shown:
                 area += [x, y]
-            area += [visible[-1][0], top + ph]
+            area += [shown[-1][0], base]
             self.create_polygon(area, fill=lighten(self.color, 0.86), outline="")
-            flat = [c for p in visible for c in p]
-            self.create_line(flat, fill=self.color, width=3, joinstyle="round", capstyle="round")
+            self.create_line([c for p in shown for c in p], fill=self.color, width=3, joinstyle="round",
+                             capstyle="round")
         for i, (x, y) in enumerate(self._pts):
-            if i <= pos + 0.001:
-                big = i == self._hover
-                r = 6 if big else 4
+            if x <= x_limit + 0.5:
+                r = 6 if i == self._hover else 4
                 self.create_oval(x - r, y - r, x + r, y + r, fill=C.WHITE, outline=self.color, width=2.5)
-        if self._hover is not None and self._hover <= pos + 0.001:
+        if self._hover is not None and self._pts[self._hover][0] <= x_limit + 0.5:
             x, y = self._pts[self._hover]
-            self.create_line(x, top, x, top + ph, fill=self.color, dash=(4, 3))
-            draw_tooltip(self, x, y, f"{self.labels[self._hover]}\n{self.values[self._hover]} submissions")
+            self.create_line(x, top, x, base, fill=self.color, dash=(4, 3))
+            draw_tooltip(self, x, y, f"{self.labels[self._hover]}\n{self.values[self._hover]} {self.unit}")
 
     def _motion(self, e):
         if not self._pts:
@@ -1205,7 +1608,7 @@ class AnimatedRankList(tk.Canvas):
     ROW_H = 50
 
     def __init__(self, master, on_click=None, empty_text="No votes yet."):
-        super().__init__(master, height=self.ROW_H, bg=C.WHITE, highlightthickness=0)
+        super().__init__(master, height=self.ROW_H, bg=bg_of(master), highlightthickness=0)
         self.items, self.on_click, self.empty_text = [], on_click, empty_text
         self._progress, self._anim, self._hover = [], None, None
         self._font = tkfont.Font(family=FONT, size=10, weight="bold")
@@ -1249,7 +1652,7 @@ class AnimatedRankList(tk.Canvas):
             self.create_text(44, y0 + 20, text=ellipsize(title, self._font, room), anchor="w",
                              fill=C.TEXT, font=self._font)
             x1, x2, by = 44, w - 14, y0 + self.ROW_H - 14
-            rounded_rect(self, x1, by, x2, by + 6, 3, fill="#EEF2FA", outline="")
+            rounded_rect(self, x1, by, x2, by + 6, 3, fill="#EEEBE4", outline="")
             fill_w = (x2 - x1) * value / top * (self._progress[i] if i < len(self._progress) else 1)
             if fill_w > 2:
                 rounded_rect(self, x1, by, x1 + fill_w, by + 6, 3,

@@ -15,6 +15,12 @@ def app_folder():
     return os.path.dirname(os.path.abspath(__file__))
 
 
+def resource_path(*parts):
+    """Path of a bundled file (like assets/login_bg.jpg). Works with python main.py AND inside the .exe."""
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, *parts)
+
+
 DB_PATH = os.path.join(app_folder(), "student_feedback.db")
 
 SCHEMA = """
@@ -73,7 +79,7 @@ class Database:
         self.conn = sqlite3.connect(path, timeout=10)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
-        self.conn.execute("PRAGMA journal_mode = WAL")   
+        self.conn.execute("PRAGMA journal_mode = WAL")   # lets many app windows share one file
         self.conn.executescript(SCHEMA)
         self.conn.commit()
 

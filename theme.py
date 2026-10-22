@@ -3,6 +3,7 @@ theme.py
 Colors, fonts and small helper functions (animation, colors, dates)
 that are used by the whole app.
 """
+import math
 import time
 import tkinter as tk
 from datetime import datetime, timezone
@@ -16,41 +17,47 @@ def font(size=10, weight="normal"):
 
 
 class C:
-    """All the colors of the app in one place."""
-    NAVY = "#0A2A63"
-    NAVY_DARK = "#071E48"
-    NAVY_HOVER = "#143F8C"
-    BLUE = "#1F6FEB"
-    BLUE_DARK = "#1458C4"
-    BLUE_SOFT = "#E7F0FF"
-    BG = "#F2F5FA"
+    """All the colors of the app in one place (soft beige page, white cards, sage-green brand)."""
+    # page and cards
+    BG = "#ECEAE4"
     WHITE = "#FFFFFF"
-    TEXT = "#16264A"
-    MUTED = "#6C7A96"
-    BORDER = "#DDE4F0"
-    CARD_BORDER = "#E6ECF6"
-    ROW_HOVER = "#F1F6FF"
-    GREEN = "#1FA971"
-    GREEN_SOFT = "#DDF6EA"
-    ORANGE = "#F59E0B"
-    ORANGE_SOFT = "#FFF1D6"
-    RED = "#E5484D"
-    RED_SOFT = "#FDE4E4"
-    PURPLE = "#7C5CFC"
-    PURPLE_SOFT = "#ECE7FF"
-    TEAL = "#14B8C4"
-    PINK = "#EC4899"
+    CARD_BORDER = "#FFFFFF"
+    SHADOW = "#DEDBD2"
+    TEXT = "#1E2B25"
+    MUTED = "#7B877F"
+    BORDER = "#DAD7CE"
+    ROW_HOVER = "#F2F6F3"
+    DARK = "#1F2E27"
+    # brand greens
+    PRIMARY = "#3E6A53"
+    PRIMARY_DARK = "#2C5040"
+    PRIMARY_LIGHT = "#7FA48F"
+    PRIMARY_SOFT = "#E3EEE6"
+    PRIMARY_MIST = "#F0F5F1"
+    # extra colors
+    BLUE = "#4F8FD8"
+    BLUE_SOFT = "#E1EDFB"
+    GREEN = "#3E9B6E"
+    GREEN_SOFT = "#DDF1E5"
+    ORANGE = "#E69B3A"
+    ORANGE_SOFT = "#FBEBD3"
+    RED = "#D9564F"
+    RED_SOFT = "#FBE3E1"
+    PURPLE = "#8068C8"
+    PURPLE_SOFT = "#ECE7F8"
+    TEAL = "#2FA7A0"
+    PINK = "#E07A8B"
 
 
 CATEGORIES = ["Facilities", "Academics", "Teaching", "Technology", "Cafeteria", "Others"]
 
 CATEGORY_COLORS = {
-    "Facilities": "#7C5CFC",
-    "Academics": "#3B9DF8",
-    "Teaching": "#FF9F43",
-    "Technology": "#22C58B",
-    "Cafeteria": "#EC4899",
-    "Others": "#FFC53D",
+    "Facilities": "#5E8C6F",
+    "Academics": "#6FA3D8",
+    "Teaching": "#E9A15B",
+    "Technology": "#8E7CC3",
+    "Cafeteria": "#E07A8B",
+    "Others": "#C9B458",
 }
 
 FEEDBACK_STATUSES = ["Pending", "In Progress", "Resolved"]
@@ -58,32 +65,32 @@ SUGGESTION_STATUSES = ["Pending", "Under Review", "Approved", "Rejected"]
 
 # status name -> (background, text color)
 STATUS_STYLES = {
-    "Pending": (C.ORANGE_SOFT, "#B7791F"),
-    "In Progress": ("#DCEBFF", C.BLUE),
-    "Under Review": ("#DCEBFF", C.BLUE),
-    "Resolved": (C.GREEN_SOFT, "#168A5C"),
-    "Approved": (C.GREEN_SOFT, "#168A5C"),
-    "Rejected": (C.RED_SOFT, "#C23B40"),
-    "Active": (C.GREEN_SOFT, "#168A5C"),
-    "Inactive": ("#ECEFF5", C.MUTED),
-    "Admin": (C.PURPLE_SOFT, C.PURPLE),
-    "Student": ("#DCEBFF", C.BLUE),
-    "Feedback": ("#DCEBFF", C.BLUE),
-    "Suggestion": (C.PURPLE_SOFT, C.PURPLE),
+    "Pending": (C.ORANGE_SOFT, "#B3741C"),
+    "In Progress": (C.BLUE_SOFT, "#2F6FB8"),
+    "Under Review": (C.BLUE_SOFT, "#2F6FB8"),
+    "Resolved": (C.GREEN_SOFT, "#23805A"),
+    "Approved": (C.GREEN_SOFT, "#23805A"),
+    "Rejected": (C.RED_SOFT, "#B8403B"),
+    "Active": (C.GREEN_SOFT, "#23805A"),
+    "Inactive": ("#ECEAE4", C.MUTED),
+    "Admin": (C.PURPLE_SOFT, "#6A52B0"),
+    "Student": (C.PRIMARY_SOFT, C.PRIMARY),
+    "Feedback": (C.BLUE_SOFT, "#2F6FB8"),
+    "Suggestion": (C.PURPLE_SOFT, "#6A52B0"),
 }
 
 # colors used for the bars of the status charts
 STATUS_COLORS = {
-    "Pending": "#FFA94D",
-    "In Progress": "#3B9DF8",
-    "Under Review": "#3B9DF8",
-    "Resolved": "#22C58B",
-    "Approved": "#22C58B",
-    "Rejected": "#F25F5C",
+    "Pending": "#E9A15B",
+    "In Progress": "#6FA3D8",
+    "Under Review": "#6FA3D8",
+    "Resolved": "#4E9B73",
+    "Approved": "#4E9B73",
+    "Rejected": "#D9645F",
 }
 
 # colors for the rank lists / extra decoration
-PALETTE = ["#1F6FEB", "#7C5CFC", "#FF9F43", "#22C58B", "#EC4899", "#14B8C4", "#FFC53D"]
+PALETTE = ["#3E6A53", "#6FA3D8", "#E9A15B", "#8E7CC3", "#E07A8B", "#4E9B73", "#C9B458"]
 
 
 # ---------------------------------------------------------------- colors
@@ -201,6 +208,19 @@ def stop(anim):
 def rounded_points(x1, y1, x2, y2, r):
     return [x1 + r, y1, x2 - r, y1, x2, y1, x2, y1 + r, x2, y2 - r, x2, y2,
             x2 - r, y2, x1 + r, y2, x1, y2, x1, y2 - r, x1, y1 + r, x1, y1]
+
+
+def pill_points(x1, y1, x2, y2, steps=14):
+    """Points of a pill / circle shape (ends are exact half circles)."""
+    r = (y2 - y1) / 2
+    pts = []
+    for i in range(steps + 1):                        # right end, top to bottom
+        a = -math.pi / 2 + math.pi * i / steps
+        pts += [x2 - r + r * math.cos(a), y1 + r + r * math.sin(a)]
+    for i in range(steps + 1):                        # left end, bottom to top
+        a = math.pi / 2 + math.pi * i / steps
+        pts += [x1 + r + r * math.cos(a), y1 + r + r * math.sin(a)]
+    return pts
 
 
 def rounded_rect(canvas, x1, y1, x2, y2, r, **kw):

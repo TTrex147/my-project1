@@ -13,6 +13,10 @@ from abc import ABC, abstractmethod
 
 from theme import FEEDBACK_STATUSES, SUGGESTION_STATUSES, fmt_date
 
+
+# ======================================================================
+#  USERS
+# ======================================================================
 class User(ABC):
     def __init__(self, user_id, full_name, username, is_active=True, created_at=""):
         self._user_id = user_id
@@ -21,6 +25,7 @@ class User(ABC):
         self._is_active = bool(is_active)
         self._created_at = created_at
 
+    # ---- read-only properties (encapsulation)
     @property
     def user_id(self):
         return self._user_id
@@ -52,6 +57,7 @@ class User(ABC):
     def rename(self, new_name):
         self._full_name = new_name.strip()
 
+    # ---- each child class must answer these (abstraction)
     @property
     @abstractmethod
     def role(self):
@@ -59,8 +65,9 @@ class User(ABC):
 
     @abstractmethod
     def menu_items(self):
-        """List of (screen_key, label, icon) for the sidebar."""
+        """List of (screen_key, label, icon_name) for the sidebar. Icon names come from icons.py."""
 
+    # ---- build the right child class from a database row
     @staticmethod
     def from_row(row):
         cls = Admin if row["role"] == "admin" else Student
@@ -75,12 +82,12 @@ class Student(User):
 
     def menu_items(self):
         return [
-            ("dashboard", "Dashboard", "\u2302"),
-            ("submit_feedback", "Submit Feedback", "\u270E"),
-            ("submit_suggestion", "Submit Suggestion", "\u2726"),
-            ("my_submissions", "My Submissions", "\u2630"),
-            ("board", "Suggestion Board", "\u25B2"),
-            ("profile", "Profile", "\u263B"),
+            ("dashboard", "Dashboard", "dashboard"),
+            ("submit_feedback", "Submit Feedback", "edit"),
+            ("submit_suggestion", "Submit Suggestion", "bulb"),
+            ("my_submissions", "My Submissions", "list"),
+            ("board", "Suggestion Board", "vote"),
+            ("profile", "Profile", "user"),
         ]
 
 
@@ -91,15 +98,18 @@ class Admin(User):
 
     def menu_items(self):
         return [
-            ("dashboard", "Dashboard", "\u2302"),
-            ("manage_feedback", "Manage Feedback", "\u2709"),
-            ("manage_suggestions", "Manage Suggestions", "\u2605"),
-            ("manage_users", "Manage Users", "\u263B"),
-            ("reports", "Reports", "\u25D4"),
-            ("profile", "Profile", "\u270E"),
+            ("dashboard", "Dashboard", "dashboard"),
+            ("manage_feedback", "Manage Feedback", "mail"),
+            ("manage_suggestions", "Manage Suggestions", "star"),
+            ("manage_users", "Manage Users", "users"),
+            ("reports", "Reports", "chart"),
+            ("profile", "Profile", "user"),
         ]
 
 
+# ======================================================================
+#  SUBMISSIONS (feedback and suggestions)
+# ======================================================================
 class Submission(ABC):
     TABLE = ""
     ID_COLUMN = ""

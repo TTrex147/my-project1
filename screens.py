@@ -7,22 +7,28 @@ Student screens : StudentDashboard, SubmitFeedbackScreen, SubmitSuggestionScreen
 Admin screens   : AdminDashboard, ManageFeedbackScreen, RespondScreen,
                   ManageSuggestionsScreen, ManageUsersScreen, ReportsScreen, ProfileScreen
 """
-import math
-import random
 import tkinter as tk
+import tkinter.font as tkfont
 from datetime import date, datetime, timedelta
 from tkinter import filedialog
 
+from PIL import ImageTk
+
+from icons import icon
 from managers import AppError
-from theme import (C, CATEGORIES, CATEGORY_COLORS, FEEDBACK_STATUSES, STATUS_COLORS,
-                   SUGGESTION_STATUSES, animate, fmt_date, fmt_datetime, font, lerp_color,
-                   linear, rounded_rect)
-from widgets import (AnimatedBarChart, AnimatedDonutChart, AnimatedLineChart, AnimatedRankList,
-                     Badge, Card, Column, DataTable, HoverButton, LinkLabel, Modal, Pager,
-                     ScrollFrame, StatCard, StyledEntry, StyledText, category_badge, confirm,
-                     form_label, make_combo)
+from theme import (C, CATEGORIES, CATEGORY_COLORS, FEEDBACK_STATUSES, FONT, STATUS_COLORS,
+                   SUGGESTION_STATUSES, animate, bg_of, darken, ellipsize, fmt_date, fmt_datetime,
+                   font, lerp_color, lighten, linear, rounded_rect)
+from widgets import (AnimatedBarChart, AnimatedDonutChart, AnimatedGauge, AnimatedLineChart,
+                     AnimatedRankList, Badge, Card, Column, DataTable, HoverArea, HoverButton,
+                     KpiCard, LinkLabel, Modal, Pager, PillSearch, RoundIconButton, ScrollFrame,
+                     StyledEntry, StyledText, card_fan_image, category_badge, confirm, form_label,
+                     make_combo, set_bg_tree)
 
 
+# ======================================================================
+#  Small helpers used by many screens
+# ======================================================================
 def card_title(parent, text, link_text=None, link_cmd=None, bg=C.WHITE):
     row = tk.Frame(parent, bg=bg)
     row.pack(fill="x", pady=(0, 12))
@@ -48,7 +54,7 @@ def submission_row(item, actions):
 def open_details(app, item):
     """Pop-up with all details of a feedback or suggestion."""
     svc = app.services
-    accent = C.BLUE if item.kind == "feedback" else C.PURPLE
+    accent = C.PRIMARY if item.kind == "feedback" else C.PURPLE
     m = Modal(app, f"{item.kind.capitalize()} {item.code}", width=600, accent=accent)
     tk.Label(m.body, text=item.title, bg=C.WHITE, fg=C.TEXT, font=font(13, "bold"),
              wraplength=540, justify="left").pack(anchor="w")
@@ -58,9 +64,9 @@ def open_details(app, item):
     Badge(badges, item.status).pack(side="left")
     tk.Label(m.body, text=f"Submitted by {item.author} on {fmt_datetime(item.created_at)}",
              bg=C.WHITE, fg=C.MUTED, font=font(9)).pack(anchor="w", pady=(0, 10))
-    box = tk.Frame(m.body, bg="#F6F8FC")
+    box = tk.Frame(m.body, bg="#F5F3EE")
     box.pack(fill="x")
-    tk.Label(box, text=item.description, bg="#F6F8FC", fg=C.TEXT, font=font(10), wraplength=520,
+    tk.Label(box, text=item.description, bg="#F5F3EE", fg=C.TEXT, font=font(10), wraplength=520,
              justify="left").pack(anchor="w", padx=14, pady=12)
     if item.kind == "suggestion":
         tk.Label(m.body, text=f"\u25B2  {item.votes} votes", bg=C.WHITE, fg=C.PURPLE,
@@ -72,16 +78,81 @@ def open_details(app, item):
         if not responses:
             tk.Label(m.body, text="No response yet.", bg=C.WHITE, fg=C.MUTED, font=font(10)).pack(anchor="w")
         for r in responses[:3]:
-            card = tk.Frame(m.body, bg=C.BLUE_SOFT)
+            card = tk.Frame(m.body, bg=C.PRIMARY_SOFT)
             card.pack(fill="x", pady=3)
-            tk.Label(card, text=f"{r['admin_name']}  \u2022  {fmt_datetime(r['created_at'])}", bg=C.BLUE_SOFT,
-                     fg=C.BLUE, font=font(9, "bold")).pack(anchor="w", padx=12, pady=(8, 0))
-            tk.Label(card, text=r["response_text"], bg=C.BLUE_SOFT, fg=C.TEXT, font=font(10),
+            tk.Label(card, text=f"{r['admin_name']}  \u2022  {fmt_datetime(r['created_at'])}", bg=C.PRIMARY_SOFT,
+                     fg=C.PRIMARY, font=font(9, "bold")).pack(anchor="w", padx=12, pady=(8, 0))
+            tk.Label(card, text=r["response_text"], bg=C.PRIMARY_SOFT, fg=C.TEXT, font=font(10),
                      wraplength=510, justify="left").pack(anchor="w", padx=12, pady=(2, 8))
     HoverButton(m.footer, "Close", m.close, "gray").pack(side="right")
     m.show()
 
 
+# ======================================================================
+#  Small building blocks used by the dashboards
+# ======================================================================
+GUTTER = 8            # half of the space between two cards
+
+
+def card_row(parent):
+    """A row with 4 equal columns. Put cards in it with put()."""
+    row = tk.Frame(parent, bg=C.BG)
+    row.pack(fill="x", pady=(0, 18))
+    for i in range(4):
+        row.grid_columnconfigure(i, weight=1, uniform="col")
+    return row
+
+
+def put(row, widget, col, span=1):
+    widget.grid(row=0, column=col, columnspan=span, sticky="nsew",
+                padx=(0 if col == 0 else GUTTER, 0 if col + span == 4 else GUTTER))
+
+
+class StatTile(tk.Canvas):
+    """Small rounded tile: label, number and a tiny colored tag."""
+
+    def __init__(self, master, label, tag, tag_color, width=190, height=70):
+        super().__init__(master, width=width, height=height, bg=bg_of(master), highlightthickness=0, bd=0)
+        rounded_rect(self, 0, 0, width, height, 16, fill=C.PRIMARY_MIST, outline="")
+        self.create_text(16, 21, text=label, anchor="w", fill=C.MUTED, font=font(9, "bold"))
+        self._value = self.create_text(16, 48, text="0", anchor="w", fill=C.TEXT, font=font(18, "bold"))
+        tw = tkfont.Font(family=FONT, size=8, weight="bold").measure(tag) + 18
+        rounded_rect(self, width - 14 - tw, 38, width - 14, 58, 10, fill=lighten(tag_color, 0.8), outline="")
+        self.create_text(width - 14 - tw / 2, 48, text=tag, fill=darken(tag_color, 0.25), font=font(8, "bold"))
+
+    def set(self, value):
+        self.itemconfigure(self._value, text=str(value))
+
+
+def recent_list(parent, rows, title_px=150, empty="Nothing here yet."):
+    """Compact list: colored bar, title, date and a status badge. rows = (title, sub, status)"""
+    for child in parent.winfo_children():
+        child.destroy()
+    if not rows:
+        tk.Label(parent, text=empty, bg=C.WHITE, fg=C.MUTED, font=font(10)).pack(pady=24)
+        return
+    fnt = tkfont.Font(family=FONT, size=10, weight="bold")
+    bar_colors = {"Pending": "#E9A15B", "In Progress": "#6FA3D8", "Under Review": "#6FA3D8",
+                  "Resolved": "#4E9B73", "Approved": "#4E9B73", "Rejected": "#D9645F"}
+    for title, sub, status in rows:
+        row = tk.Frame(parent, bg=C.WHITE)
+        row.pack(fill="x", pady=5)
+        tk.Frame(row, bg=bar_colors.get(status, C.PRIMARY), width=4, height=38).pack(side="left", padx=(0, 10))
+        inner = tk.Frame(row, bg=C.WHITE)
+        inner.pack(side="left", fill="x", expand=True)
+        Badge(inner, status, height=22, size=8).pack(side="right")
+        texts = tk.Frame(inner, bg=C.WHITE)
+        texts.pack(side="left")
+        tk.Label(texts, text=ellipsize(title, fnt, title_px), bg=C.WHITE, fg=C.TEXT, font=fnt,
+                 anchor="w").pack(anchor="w")
+        tk.Label(texts, text=ellipsize(sub, tkfont.Font(family=FONT, size=8), title_px), bg=C.WHITE,
+                 fg=C.MUTED, font=font(8), anchor="w").pack(anchor="w")
+        HoverArea(inner, lambda i=inner: set_bg_tree(i, C.ROW_HOVER), lambda i=inner: set_bg_tree(i, C.WHITE))
+
+
+# ======================================================================
+#  Base class for all screens inside the main window
+# ======================================================================
 class BaseScreen(tk.Frame):
     def __init__(self, parent, app, **params):
         super().__init__(parent, bg=C.BG)
@@ -89,7 +160,8 @@ class BaseScreen(tk.Frame):
         self.scroll = ScrollFrame(self)
         self.scroll.pack(fill="both", expand=True)
         self.page = tk.Frame(self.scroll.inner, bg=C.BG)
-        self.page.pack(fill="both", expand=True, padx=30, pady=24)
+        self.page.pack(fill="both", expand=True, padx=(8, 30), pady=24)
+        self.bell = None
         self.build(**params)
 
     def build(self, **params):
@@ -100,269 +172,272 @@ class BaseScreen(tk.Frame):
 
     def header(self, title, subtitle=""):
         box = tk.Frame(self.page, bg=C.BG)
-        box.pack(fill="x", pady=(0, 18))
-        tk.Label(box, text=title, bg=C.BG, fg=C.TEXT, font=font(20, "bold")).pack(anchor="w")
+        box.pack(fill="x", pady=(0, 20))
+        tk.Label(box, text=title, bg=C.BG, fg=C.TEXT, font=font(22, "bold")).pack(anchor="w")
         if subtitle:
             tk.Label(box, text=subtitle, bg=C.BG, fg=C.MUTED, font=font(10)).pack(anchor="w", pady=(2, 0))
         return box
 
-
-class LoginScreen(tk.Frame):
-    SHOW_DEMO_HINT = True
-
-    def __init__(self, parent, app):
-        super().__init__(parent, bg=C.WHITE)
-        self.app = app
-        self.left = tk.Canvas(self, width=410, highlightthickness=0, bg=C.NAVY)
-        self.left.pack(side="left", fill="y")
-        self.left.pack_propagate(False)
-        self.bubbles = []
-        self.left.bind("<Configure>", self._draw_left)
-        right = tk.Frame(self, bg=C.WHITE)
-        right.pack(side="left", fill="both", expand=True)
-        self.form = tk.Frame(right, bg=C.WHITE)
-        self.form.place(relx=0.5, rely=0.5, anchor="center")
-        self._build_form()
-        self._float()
-
-    @staticmethod
-    def _grad(y, h):
-        return lerp_color("#071E48", "#1F6FEB", (y / max(h, 1)) * 0.9)
-
-    def _draw_left(self, e):
-        w, h = e.width, e.height
-        c = self.left
-        c.delete("all")
-        for i in range(70):
-            y1, y2 = h * i / 70, h * (i + 1) / 70 + 1
-            c.create_rectangle(0, y1, w, y2, fill=self._grad(y1, h), outline="")
-        rng = random.Random(8)
-        self.bubbles = []
-        for _ in range(10):
-            r = rng.randint(28, 85)
-            x, y = rng.randint(0, w), rng.randint(0, h)
-            color = rng.choice(["#7C5CFC", "#14B8C4", "#3B9DF8", "#EC4899", "#FFC53D"])
-            item = c.create_oval(x - r, y - r, x + r, y + r, fill=color, outline="")
-            self.bubbles.append({"item": item, "x": x, "y": y, "r": r, "color": color,
-                                 "vy": rng.uniform(0.35, 0.9), "vx": rng.uniform(-0.25, 0.25)})
-        cx, top = w / 2, h / 2 - 150
-        
-        c.create_polygon(cx, top, cx + 48, top + 19, cx, top + 38, cx - 48, top + 19, fill="white", outline="", tags="fg")
-        c.create_polygon(cx - 27, top + 30, cx, top + 42, cx + 27, top + 30, cx + 27, top + 49, cx, top + 60,
-                         cx - 27, top + 49, fill="#CFE0FF", outline="", tags="fg")
-        c.create_line(cx + 40, top + 22, cx + 40, top + 48, fill="#FFC53D", width=3, tags="fg")
-        c.create_oval(cx + 36, top + 46, cx + 44, top + 56, fill="#FFC53D", outline="", tags="fg")
-        c.create_text(cx, top + 120, text="Integrated Student\nFeedback and Suggestion\nManagement System",
-                      fill="white", font=font(17, "bold"), justify="center", tags="fg")
-        c.create_text(cx, top + 215, text="Your voice matters. Help us\nbuild a better school.",
-                      fill="#BCD3FA", font=font(11), justify="center", tags="fg")
-        c.tag_raise("fg")
-
-    def _float(self):
-        try:
-            h = self.left.winfo_height()
-            for b in self.bubbles:
-                b["y"] -= b["vy"]
-                b["x"] += b["vx"]
-                if b["y"] + b["r"] < 0:
-                    b["y"] = h + b["r"]
-                x, y, r = b["x"], b["y"], b["r"]
-                self.left.coords(b["item"], x - r, y - r, x + r, y + r)
-                self.left.itemconfigure(b["item"], fill=lerp_color(self._grad(y, h), b["color"], 0.22))
-            self.after(33, self._float)
-        except tk.TclError:
-            pass
-
-    def _build_form(self):
-        f = self.form
-        tk.Label(f, text="Login", bg=C.WHITE, fg=C.TEXT, font=font(26, "bold")).pack(pady=(0, 4))
-        tk.Label(f, text="Welcome back! Please sign in to continue.", bg=C.WHITE, fg=C.MUTED,
-                 font=font(10)).pack(pady=(0, 22))
-        self.username = StyledEntry(f, placeholder="Username", width=36, size=11)
-        self.username.pack(fill="x", ipady=5)
-        row = tk.Frame(f, bg=C.WHITE)
-        row.pack(fill="x", pady=(14, 0))
-        self.password = StyledEntry(row, placeholder="Password", password=True, width=30, size=11)
-        self.password.pack(side="left", fill="x", expand=True, ipady=5)
-        self._show = False
-        self.eye = LinkLabel(row, "Show", self._toggle_password)
-        self.eye.pack(side="left", padx=(8, 0))
-        tk.Label(f, text="Select Role", bg=C.WHITE, fg=C.TEXT, font=font(10, "bold")).pack(anchor="w", pady=(16, 5))
-        self.role = make_combo(f, ["Student", "Admin"], width=36, value="Student")
-        self.role.pack(fill="x")
-        self.error = tk.Label(f, text="", bg=C.WHITE, fg=C.RED, font=font(9), wraplength=330, justify="left")
-        self.error.pack(anchor="w", pady=(10, 0))
-        self.button = HoverButton(f, "Login", self._login, "primary", height=44, size=11)
-        self.button.pack(fill="x", pady=(8, 0))
-        links = tk.Frame(f, bg=C.WHITE)
-        links.pack(pady=(16, 0))
-        tk.Label(links, text="Don't have an account?", bg=C.WHITE, fg=C.MUTED, font=font(9)).pack(side="left")
-        LinkLabel(links, "Register", self._open_register).pack(side="left", padx=(5, 0))
-        if self.SHOW_DEMO_HINT:
-            tk.Label(f, text="Demo:  admin / admin123   \u2022   tungtungsahur / student123", bg=C.WHITE,
-                     fg="#9AA6BE", font=font(8)).pack(pady=(22, 0))
-        for w in (self.username, self.password):
-            w.bind("<Return>", lambda e: self._login())
-        self.after(250, self.username.focus_set)
-
-    def _toggle_password(self):
-        self._show = not self._show
-        self.password.set_password_visible(self._show)
-        self.eye.configure(text="Hide" if self._show else "Show")
-
-    def _shake(self):
-        animate(self.form, 450, lambda t: self.form.place_configure(x=math.sin(t * math.pi * 7) * (1 - t) * 14),
-                done=lambda: self.form.place_configure(x=0), ease=linear)
-
-    def _login(self):
-        try:
-            user = self.app.services.auth.login(self.username.value(), self.password.value(strip=False),
-                                                self.role.get().lower())
-        except AppError as e:
-            flash_error(self.error, str(e))
-            self._shake()
-            return
-        self.app.login_success(user)
-
-    def _open_register(self):
-        m = Modal(self.app, "Create Student Account", width=480, accent=C.GREEN)
-        tk.Label(m.body, text="Fill in the form below to join the system.", bg=C.WHITE, fg=C.MUTED,
-                 font=font(10)).pack(anchor="w", pady=(0, 10))
-        entries = {}
-        for key, label, ph, pw in (("name", "Full Name", "e.g. Juan Dela Cruz", False),
-                                   ("user", "Username", "4-20 letters or numbers", False),
-                                   ("pass", "Password", "At least 6 characters", True),
-                                   ("conf", "Confirm Password", "Type the password again", True)):
-            form_label(m.body, label, True).pack(anchor="w", pady=(8, 4))
-            entries[key] = StyledEntry(m.body, placeholder=ph, password=pw, width=40)
-            entries[key].pack(fill="x", ipady=3)
-        err = tk.Label(m.body, text="", bg=C.WHITE, fg=C.RED, font=font(9), wraplength=420, justify="left")
-        err.pack(anchor="w", pady=(10, 0))
-
-        def create():
-            try:
-                self.app.services.auth.register_student(entries["name"].value(), entries["user"].value(),
-                                                        entries["pass"].value(False), entries["conf"].value(False))
-            except AppError as e:
-                flash_error(err, str(e))
-                return
-            self.username.set_value(entries["user"].value().lower())
-            m.close()
-            self.app.toast.show("Account created! You can log in now.", "success")
-
-        HoverButton(m.footer, "Create Account", create, "success").pack(side="right")
-        HoverButton(m.footer, "Cancel", m.close, "gray").pack(side="right", padx=8)
-        m.show()
-        entries["name"].focus_set()
-
-
-class StudentDashboard(BaseScreen):
-    def build(self):
-        self.header("Dashboard", f"Welcome back, {self.user.first_name}! Here is what is happening with your submissions.")
+    def greeting_header(self, title, subtitle):
+        """Big hello on the left, search box and bell on the right (dashboard top)."""
         row = tk.Frame(self.page, bg=C.BG)
-        row.pack(fill="x")
-        specs = [("My Feedback", "\u2709", C.BLUE, "#E3EEFF"), ("My Suggestions", "\u2726", C.GREEN, C.GREEN_SOFT),
-                 ("Total Votes", "\u25B2", C.PURPLE, C.PURPLE_SOFT), ("Resolved", "\u2713", C.ORANGE, C.ORANGE_SOFT)]
-        self.stats = []
-        for i, (label, glyph, color, soft) in enumerate(specs):
-            row.grid_columnconfigure(i, weight=1, uniform="stat")
-            card = StatCard(row, label, glyph, color, soft, delay=i * 130)
-            card.grid(row=0, column=i, sticky="nsew", padx=(0 if i == 0 else 8, 0 if i == 3 else 8))
-            self.stats.append(card)
-        lower = tk.Frame(self.page, bg=C.BG)
-        lower.pack(fill="both", expand=True, pady=(18, 0))
-        lower.grid_columnconfigure(0, weight=3, uniform="low")
-        lower.grid_columnconfigure(1, weight=2, uniform="low")
-        recent = Card(lower, accent=C.BLUE)
-        recent.grid(row=0, column=0, sticky="nsew", padx=(0, 9))
-        card_title(recent.body, "Recent Submissions", "View All", lambda: self.app.navigate("my_submissions"))
-        self.table = DataTable(recent.body, [Column("Type", "type", 112, "badge"), Column("Title", "title", 160, "title"),
-                                             Column("Status", "status", 132, "badge"), Column("Date", "date", 105)],
-                               page_size=5, row_height=44, footer=False,
-                               empty_text="No submissions yet. Send your first feedback!")
-        self.table.pack(fill="x")
-        top = Card(lower, accent=C.PURPLE)
-        top.grid(row=0, column=1, sticky="nsew", padx=(9, 0))
+        row.pack(fill="x", pady=(0, 22))
+        left = tk.Frame(row, bg=C.BG)
+        left.pack(side="left")
+        tk.Label(left, text=title, bg=C.BG, fg=C.TEXT, font=font(22, "bold")).pack(anchor="w")
+        tk.Label(left, text=subtitle, bg=C.BG, fg=C.MUTED, font=font(10)).pack(anchor="w", pady=(2, 0))
+        right = tk.Frame(row, bg=C.BG)
+        right.pack(side="right")
+        self.bell = RoundIconButton(right, "bell", self.show_notifications)
+        self.bell.pack(side="right", padx=(12, 0))
+        PillSearch(right, placeholder="Search...", command=self.app.global_search).pack(side="right")
+        self.update_bell()
+
+    def update_bell(self):
+        if self.bell is not None:
+            self.bell.set_dot(self.svc.reports.notifications(self.user)[1])
+
+    def show_notifications(self):
+        items, _dot = self.svc.reports.notifications(self.user)
+        m = Modal(self.app, "Notifications", width=500, accent=C.PRIMARY)
+        if not items:
+            tk.Label(m.body, text="You are all caught up. Nothing new!", bg=C.WHITE, fg=C.MUTED,
+                     font=font(10)).pack(anchor="w", pady=6)
+        for heading, text, when in items:
+            box = tk.Frame(m.body, bg=C.PRIMARY_MIST)
+            box.pack(fill="x", pady=4)
+            tk.Label(box, text=f"{heading}   \u2022   {fmt_date(when)}", bg=C.PRIMARY_MIST, fg=C.PRIMARY,
+                     font=font(9, "bold"), wraplength=430, justify="left").pack(anchor="w", padx=14, pady=(10, 0))
+            tk.Label(box, text=text, bg=C.PRIMARY_MIST, fg=C.TEXT, font=font(10), wraplength=430,
+                     justify="left").pack(anchor="w", padx=14, pady=(2, 10))
+        HoverButton(m.footer, "Close", m.close, "gray").pack(side="right")
+        m.show()
+
+
+# ======================================================================
+#  DASHBOARDS
+# ======================================================================
+class DashboardBase(BaseScreen):
+    """Shared pieces of the student and admin dashboards."""
+
+    def kpi_row(self, specs):
+        row = card_row(self.page)
+        self.kpis = []
+        for i, (label, icon_name, color, variant) in enumerate(specs):
+            card = KpiCard(row, label, icon_name, color, variant, delay=i * 130)
+            put(row, card, i)
+            self.kpis.append(card)
+
+    def profile_card(self, parent, stats):
+        card = Card(parent, accent=C.PRIMARY, pad=20)
+        b = card.body
+        av = tk.Canvas(b, width=96, height=96, bg=C.WHITE, highlightthickness=0)
+        av.create_oval(2, 2, 94, 94, fill=C.PRIMARY_SOFT, outline="")
+        av.create_oval(10, 10, 86, 86, fill=C.PRIMARY, outline="")
+        av.create_text(48, 48, text=self.user.initial, fill="white", font=font(30, "bold"))
+        av.pack(pady=(4, 10))
+        tk.Label(b, text=self.user.full_name, bg=C.WHITE, fg=C.TEXT, font=font(14, "bold")).pack()
+        tk.Label(b, text=f"@{self.user.username}", bg=C.WHITE, fg=C.MUTED, font=font(10)).pack()
+        Badge(b, self.user.role.capitalize()).pack(pady=(8, 0))
+        row = tk.Frame(b, bg=C.WHITE)
+        row.pack(fill="x", pady=(16, 4))
+        labels = {}
+        for i, (label, key) in enumerate(stats):
+            row.grid_columnconfigure(i, weight=1, uniform="ps")
+            cell = tk.Frame(row, bg=C.WHITE)
+            cell.grid(row=0, column=i)
+            tk.Label(cell, text=label, bg=C.WHITE, fg=C.MUTED, font=font(8)).pack()
+            labels[key] = tk.Label(cell, text="0", bg=C.WHITE, fg=C.TEXT, font=font(15, "bold"))
+            labels[key].pack()
+        return card, labels
+
+    def activity_card(self, parent, title, tiles):
+        card = Card(parent, accent=C.PRIMARY, pad=20)
+        top = tk.Frame(card.body, bg=C.WHITE)
+        top.pack(fill="x")
+        tk.Label(top, text=title, bg=C.WHITE, fg=C.TEXT, font=font(13, "bold")).pack(side="left")
+        tk.Label(top, text="\u25CF On track", bg=C.WHITE, fg=C.GREEN, font=font(9, "bold")).pack(side="left", padx=10)
+        tk.Label(top, text="Last 7 days", bg=C.WHITE, fg=C.MUTED, font=font(9)).pack(side="right")
+        tile_row = tk.Frame(card.body, bg=C.WHITE)
+        tile_row.pack(fill="x", pady=(14, 6))
+        made = []
+        for label, tag, color in tiles:
+            t = StatTile(tile_row, label, tag, color)
+            t.pack(side="left", padx=(0, 12))
+            made.append(t)
+        chart = AnimatedLineChart(card.body, height=200, color=C.PRIMARY)
+        chart.pack(fill="x")
+        return card, made, chart
+
+    def gauge_card(self, parent, title, subtitle):
+        card = Card(parent, accent=C.PRIMARY, pad=20)
+        tk.Label(card.body, text=title, bg=C.WHITE, fg=C.TEXT, font=font(13, "bold")).pack(anchor="w")
+        sub = tk.Label(card.body, text=subtitle, bg=C.WHITE, fg=C.MUTED, font=font(9), wraplength=170,
+                       justify="left")
+        sub.pack(anchor="w", pady=(2, 0))
+        card.body.bind("<Configure>", lambda e: sub.configure(wraplength=max(80, e.width - 4)))
+        gauge = AnimatedGauge(card.body, height=190)
+        gauge.pack(fill="x", pady=(8, 0))
+        return card, gauge
+
+
+class StudentDashboard(DashboardBase):
+    def build(self):
+        self.greeting_header(f"Hello, {self.user.first_name}!", "Explore information and activity about your feedback")
+        self.kpi_row([("My Feedback", "mail", C.PRIMARY, "bars"), ("My Suggestions", "bulb", "#8E7CC3", "wave"),
+                      ("Total Votes", "vote", "#E9A15B", "plain"), ("Resolved", "check", "#FFFFFF", "accent")])
+        r2 = card_row(self.page)
+        c, self.tiles, self.line = self.activity_card(r2, "My Activity", [
+            ("Feedback sent", "this week", C.PRIMARY), ("Suggestions sent", "this week", "#8E7CC3")])
+        put(r2, c, 0, 2)
+        c, self.gauge = self.gauge_card(r2, "Resolution Rate", "How much of your feedback was resolved")
+        put(r2, c, 2)
+        c, self.pstats = self.profile_card(r2, [("Feedback", "f"), ("Ideas", "s"), ("Votes", "v")])
+        put(r2, c, 3)
+        r3 = card_row(self.page)
+        top = Card(r3, accent="#8E7CC3", pad=20)
         card_title(top.body, "Top Voted Suggestions", "View All", lambda: self.app.navigate("board"))
         self.rank = AnimatedRankList(top.body, on_click=lambda i: self.app.navigate("board"))
         self.rank.pack(fill="x")
-        self.load(first=True)
+        put(r3, top, 0, 2)
+        rec = Card(r3, accent=C.PRIMARY, pad=20)
+        card_title(rec.body, "Recent", "View All", lambda: self.app.navigate("my_submissions"))
+        self.recent = tk.Frame(rec.body, bg=C.WHITE)
+        self.recent.pack(fill="x")
+        put(r3, rec, 2)
+        put(r3, self.security_card(r3), 3)
+        r4 = card_row(self.page)
+        put(r4, self.promo_card(r4), 0, 4)
+        self.load()
 
-    def load(self, first=False):
-        s = self.svc.reports.student_stats(self.user.user_id)
-        for card, value in zip(self.stats, (s["feedback"], s["suggestions"], s["votes"], s["resolved"])):
+    def security_card(self, parent):
+        card = Card(parent, accent=C.PRIMARY, pad=20)
+        b = card.body
+        badge = tk.Canvas(b, width=84, height=84, bg=C.WHITE, highlightthickness=0)
+        badge.create_oval(2, 2, 82, 82, fill=C.PRIMARY_SOFT, outline="")
+        badge.create_image(42, 42, image=icon("lock", C.PRIMARY, 38, 1.7))
+        badge.pack(pady=(6, 12))
+        tk.Label(b, text="Keep you safe!", bg=C.WHITE, fg=C.TEXT, font=font(13, "bold")).pack()
+        tk.Label(b, text="Update your password\nfrom time to time", bg=C.WHITE, fg=C.MUTED, font=font(9),
+                 justify="center").pack(pady=(4, 14))
+        HoverButton(b, "Update Security", lambda: self.app.navigate("profile"), "primary", height=36).pack()
+        return card
+
+    def promo_card(self, parent):
+        card = Card(parent, accent=C.PRIMARY, pad=26, bg="#E3EEE6")
+        card.body.configure(bg="#E3EEE6")
+        row = tk.Frame(card.body, bg="#E3EEE6")
+        row.pack(fill="x")
+        left = tk.Frame(row, bg="#E3EEE6")
+        left.pack(side="left", anchor="w")
+        tk.Label(left, text="Have an idea for the school?", bg="#E3EEE6", fg=C.TEXT, font=font(17, "bold")).pack(anchor="w")
+        tk.Label(left, text="Suggestions with the most votes get noticed first.\nShare yours, or tell the school about a problem.",
+                 bg="#E3EEE6", fg="#4B5A52", font=font(10), justify="left").pack(anchor="w", pady=(6, 16))
+        btns = tk.Frame(left, bg="#E3EEE6")
+        btns.pack(anchor="w")
+        HoverButton(btns, "Add Suggestion  +", lambda: self.app.navigate("submit_suggestion"), "primary").pack(side="left")
+        HoverButton(btns, "Send Feedback", lambda: self.app.navigate("submit_feedback"), "outline").pack(side="left", padx=10)
+        self._fan = ImageTk.PhotoImage(card_fan_image(300, 170))
+        art = tk.Canvas(row, width=300, height=170, bg="#E3EEE6", highlightthickness=0)
+        art.create_image(150, 85, image=self._fan)
+        art.pack(side="right")
+        return card
+
+    def load(self):
+        r, uid = self.svc.reports, self.user.user_id
+        s = r.student_stats(uid)
+        for card, value in zip(self.kpis, (s["feedback"], s["suggestions"], s["votes"], s["resolved"])):
             card.set_value(value)
-        rows = [{"cells": {"type": r["type"], "title": r["title"], "status": r["status"],
-                           "date": fmt_date(r["created_at"])}}
-                for r in self.svc.reports.recent(self.user.user_id, 5)]
-        self.table.set_rows(rows, keep_page=not first)
-        self.rank.set_data([(r["title"], r["votes"]) for r in self.svc.reports.top_voted(5)])
+        for card, kind in zip(self.kpis, ("feedback", "suggestion", "votes", "resolved")):
+            card.set_series(r.daily_series(kind, uid))
+        days = r.last_days(7, uid)
+        self.line.set_data([d for d, _ in days], [n for _, n in days])
+        self.tiles[0].set(sum(r.daily_series("feedback", uid)))
+        self.tiles[1].set(sum(r.daily_series("suggestion", uid)))
+        done, total = r.resolution(uid)
+        self.gauge.set_value(done * 100 / total if total else 0, f"{done} of {total} resolved")
+        self.pstats["f"].configure(text=str(s["feedback"]))
+        self.pstats["s"].configure(text=str(s["suggestions"]))
+        self.pstats["v"].configure(text=str(s["votes"]))
+        recent_list(self.recent, [(x["title"], f"{x['type']}  \u2022  {fmt_date(x['created_at'])}", x["status"])
+                                  for x in r.recent(uid, 4)], 105, "No submissions yet.")
+        self.rank.set_data([(t["title"], t["votes"]) for t in r.top_voted(5)])
+        self.update_bell()
 
     def on_data_changed(self):
         self.load()
 
 
-class AdminDashboard(BaseScreen):
+class AdminDashboard(DashboardBase):
     def build(self):
-        self.header("Dashboard", f"Welcome back, {self.user.first_name}! Here is the overview of the whole system.")
-        row = tk.Frame(self.page, bg=C.BG)
-        row.pack(fill="x")
-        specs = [("Total Feedback", "\u2709", C.BLUE, "#E3EEFF"), ("Total Suggestions", "\u2726", C.PURPLE, C.PURPLE_SOFT),
-                 ("Pending Items", "!", C.ORANGE, C.ORANGE_SOFT),
-                 ("Active Students", "\u263B", C.GREEN, C.GREEN_SOFT)]
-        self.stats = []
-        for i, (label, glyph, color, soft) in enumerate(specs):
-            row.grid_columnconfigure(i, weight=1, uniform="stat")
-            card = StatCard(row, label, glyph, color, soft, delay=i * 130)
-            card.grid(row=0, column=i, sticky="nsew", padx=(0 if i == 0 else 8, 0 if i == 3 else 8))
-            self.stats.append(card)
-        mid = tk.Frame(self.page, bg=C.BG)
-        mid.pack(fill="x", pady=(18, 0))
-        mid.grid_columnconfigure(0, weight=1, uniform="m")
-        mid.grid_columnconfigure(1, weight=1, uniform="m")
-        c1 = Card(mid, accent=C.PURPLE)
-        c1.grid(row=0, column=0, sticky="nsew", padx=(0, 9))
+        self.greeting_header(f"Hello, {self.user.first_name}!", "Explore information and activity about the whole system")
+        self.kpi_row([("Total Feedback", "mail", C.PRIMARY, "bars"), ("Total Suggestions", "bulb", "#8E7CC3", "wave"),
+                      ("Pending Items", "clock", "#E9A15B", "plain"), ("Active Students", "users", "#FFFFFF", "accent")])
+        r2 = card_row(self.page)
+        c, self.tiles, self.line = self.activity_card(r2, "Submissions", [
+            ("Feedback", "this week", C.PRIMARY), ("Suggestions", "this week", "#8E7CC3")])
+        put(r2, c, 0, 2)
+        c, self.gauge = self.gauge_card(r2, "Resolution Rate", "Share of all feedback marked as resolved")
+        put(r2, c, 2)
+        c, self.pstats = self.profile_card(r2, [("Pending", "p"), ("Active", "i"), ("Done", "r")])
+        put(r2, c, 3)
+        r3 = card_row(self.page)
+        c1 = Card(r3, accent="#8E7CC3", pad=20)
         card_title(c1.body, "Feedback by Category")
         self.donut = AnimatedDonutChart(c1.body, height=230)
         self.donut.pack(fill="x")
-        c2 = Card(mid, accent=C.GREEN)
-        c2.grid(row=0, column=1, sticky="nsew", padx=(9, 0))
+        put(r3, c1, 0, 2)
+        c2 = Card(r3, accent=C.GREEN, pad=20)
         card_title(c2.body, "Feedback Status")
         self.bars = AnimatedBarChart(c2.body, height=230)
         self.bars.pack(fill="x")
-        bot = tk.Frame(self.page, bg=C.BG)
-        bot.pack(fill="x", pady=(18, 0))
-        bot.grid_columnconfigure(0, weight=3, uniform="b")
-        bot.grid_columnconfigure(1, weight=2, uniform="b")
-        c3 = Card(bot, accent=C.BLUE)
-        c3.grid(row=0, column=0, sticky="nsew", padx=(0, 9))
-        card_title(c3.body, "Submissions \u2013 Last 7 Days")
-        self.line = AnimatedLineChart(c3.body, height=250, color=C.BLUE)
-        self.line.pack(fill="x")
-        c4 = Card(bot, accent=C.PINK)
-        c4.grid(row=0, column=1, sticky="nsew", padx=(9, 0))
-        card_title(c4.body, "Top Voted Suggestions", "Manage", lambda: self.app.navigate("manage_suggestions"))
-        self.rank = AnimatedRankList(c4.body)
+        put(r3, c2, 2, 2)
+        r4 = card_row(self.page)
+        c3 = Card(r4, accent=C.PINK, pad=20)
+        card_title(c3.body, "Top Voted Suggestions", "Manage", lambda: self.app.navigate("manage_suggestions"))
+        self.rank = AnimatedRankList(c3.body)
         self.rank.pack(fill="x")
+        put(r4, c3, 0, 2)
+        c4 = Card(r4, accent=C.PRIMARY, pad=20)
+        card_title(c4.body, "Latest Submissions", "Review", lambda: self.app.navigate("manage_feedback"))
+        self.recent = tk.Frame(c4.body, bg=C.WHITE)
+        self.recent.pack(fill="x")
+        put(r4, c4, 2, 2)
         self.load()
 
     def load(self):
         r = self.svc.reports
         s = r.admin_stats()
-        for card, value in zip(self.stats, (s["feedback"], s["suggestions"], s["pending"], s["students"])):
+        for card, value in zip(self.kpis, (s["feedback"], s["suggestions"], s["pending"], s["students"])):
             card.set_value(value)
+        for card, kind in zip(self.kpis, ("feedback", "suggestion", "resolved", "feedback")):
+            card.set_series(r.daily_series(kind))
+        days = r.last_days(7)
+        self.line.set_data([d for d, _ in days], [n for _, n in days])
+        self.tiles[0].set(sum(r.daily_series("feedback")))
+        self.tiles[1].set(sum(r.daily_series("suggestion")))
+        done, total = r.resolution()
+        self.gauge.set_value(done * 100 / total if total else 0, f"{done} of {total} resolved")
+        counts = dict(r.by_status("feedback"))
+        self.pstats["p"].configure(text=str(counts.get("Pending", 0)))
+        self.pstats["i"].configure(text=str(counts.get("In Progress", 0)))
+        self.pstats["r"].configure(text=str(counts.get("Resolved", 0)))
         cats = r.by_category("feedback")
         self.donut.set_data([c for c, _ in cats], [n for _, n in cats], [CATEGORY_COLORS[c] for c, _ in cats])
         st = r.by_status("feedback")
         self.bars.set_data([a for a, _ in st], [n for _, n in st], [STATUS_COLORS[a] for a, _ in st])
-        days = r.last_days(7)
-        self.line.set_data([d for d, _ in days], [n for _, n in days])
         self.rank.set_data([(t["title"], t["votes"]) for t in r.top_voted(5)])
+        recent_list(self.recent, [(x["title"], f"{x['type']} by {x['author']}  \u2022  {fmt_date(x['created_at'])}",
+                                   x["status"]) for x in r.recent(None, 5)], 260, "Nothing submitted yet.")
+        self.update_bell()
 
     def on_data_changed(self):
         self.load()
 
 
+# ======================================================================
+#  SUBMIT FEEDBACK / SUGGESTION (student)
+# ======================================================================
 class SubmitScreen(BaseScreen):
     kind = "feedback"
 
@@ -371,7 +446,7 @@ class SubmitScreen(BaseScreen):
         sub = ("Tell the school about a problem or complaint." if self.kind == "feedback"
                else "Share an idea that can make the school better.")
         self.header(f"Submit {noun}", sub)
-        accent = C.BLUE if self.kind == "feedback" else C.PURPLE
+        accent = C.PRIMARY if self.kind == "feedback" else C.PURPLE
         card = Card(self.page, accent=accent, pad=28)
         card.pack(fill="x")
         b = card.body
@@ -414,8 +489,11 @@ class SubmitSuggestionScreen(SubmitScreen):
     kind = "suggestion"
 
 
+# ======================================================================
+#  MY SUBMISSIONS (student CRUD)
+# ======================================================================
 class MySubmissionsScreen(BaseScreen):
-    def build(self):
+    def build(self, query=""):
         self.filter, self._job = "All", None
         self.header("My Submissions", "See everything you sent. You can edit or delete items that are still Pending.")
         bar = tk.Frame(self.page, bg=C.BG)
@@ -428,8 +506,10 @@ class MySubmissionsScreen(BaseScreen):
             self.chips[name] = chip
         self.search = StyledEntry(bar, placeholder="Search my submissions...", width=30)
         self.search.pack(side="right", ipady=3)
+        if query:
+            self.search.set_value(query)
         self.search.bind("<KeyRelease>", lambda e: self._debounce())
-        card = Card(self.page, accent=C.BLUE, pad=14)
+        card = Card(self.page, accent=C.PRIMARY, pad=14)
         card.pack(fill="x")
         self.table = DataTable(card.body, [
             Column("Type", "type", 110, "badge"), Column("Title", "title", 190, "title"),
@@ -513,6 +593,9 @@ class MySubmissionsScreen(BaseScreen):
         m.show()
 
 
+# ======================================================================
+#  SUGGESTION BOARD (students vote here)
+# ======================================================================
 class SuggestionBoardScreen(BaseScreen):
     PER_PAGE = 6
 
@@ -572,7 +655,7 @@ class SuggestionBoardScreen(BaseScreen):
             card.grid(row=i // 2, column=i % 2, sticky="nsew", padx=6, pady=6)
 
     def _card(self, s):
-        color = CATEGORY_COLORS.get(s.category, C.BLUE)
+        color = CATEGORY_COLORS.get(s.category, C.PRIMARY)
         card = Card(self.cards, accent=color, pad=16)
         b = card.body
         top = tk.Frame(b, bg=C.WHITE)
@@ -608,6 +691,9 @@ class SuggestionBoardScreen(BaseScreen):
         self.reload()
 
 
+# ======================================================================
+#  PROFILE
+# ======================================================================
 class ProfileScreen(BaseScreen):
     def build(self):
         self.header("Profile", "Your account details and password.")
@@ -615,11 +701,11 @@ class ProfileScreen(BaseScreen):
         row.pack(fill="x")
         row.grid_columnconfigure(0, weight=1, uniform="p")
         row.grid_columnconfigure(1, weight=1, uniform="p")
-        
-        c1 = Card(row, accent=C.BLUE, pad=24)
+        # --- account card
+        c1 = Card(row, accent=C.PRIMARY, pad=24)
         c1.grid(row=0, column=0, sticky="nsew", padx=(0, 9))
         av = tk.Canvas(c1.body, width=84, height=84, bg=C.WHITE, highlightthickness=0)
-        av.create_oval(2, 2, 82, 82, fill=C.BLUE, outline="#BCD3FA", width=4)
+        av.create_oval(2, 2, 82, 82, fill=C.PRIMARY, outline="#CFE0D5", width=4)
         av.create_text(42, 42, text=self.user.initial, fill="white", font=font(30, "bold"))
         av.pack(anchor="w")
         Badge(c1.body, self.user.role.capitalize()).pack(anchor="w", pady=(12, 4))
@@ -632,7 +718,7 @@ class ProfileScreen(BaseScreen):
         self.name_msg = tk.Label(c1.body, text="", bg=C.WHITE, fg=C.RED, font=font(9))
         self.name_msg.pack(anchor="w", pady=(6, 0))
         HoverButton(c1.body, "Save Name", self.save_name, "primary", width=130).pack(anchor="e", pady=(6, 0))
-        
+        # --- password card
         c2 = Card(row, accent=C.PURPLE, pad=24)
         c2.grid(row=0, column=1, sticky="nsew", padx=(9, 0))
         tk.Label(c2.body, text="Change Password", bg=C.WHITE, fg=C.TEXT, font=font(12, "bold")).pack(anchor="w", pady=(0, 10))
@@ -668,6 +754,9 @@ class ProfileScreen(BaseScreen):
         self.app.toast.show("Password changed successfully.", "success")
 
 
+# ======================================================================
+#  ADMIN: MANAGE FEEDBACK / SUGGESTIONS
+# ======================================================================
 class ManageScreen(BaseScreen):
     kind = "feedback"
     statuses = FEEDBACK_STATUSES
@@ -680,7 +769,7 @@ class ManageScreen(BaseScreen):
     def actions_for(self, item):
         raise NotImplementedError
 
-    def build(self):
+    def build(self, query=""):
         self._job = None
         self.header(self.title_text, self.subtitle)
         bar = tk.Frame(self.page, bg=C.BG)
@@ -697,9 +786,11 @@ class ManageScreen(BaseScreen):
             combo.bind("<<ComboboxSelected>>", lambda e: self.load(), add="+")
         self.search = StyledEntry(bar, placeholder=f"Search {self.kind}...", width=30)
         self.search.pack(side="right", ipady=3, anchor="s")
+        if query:
+            self.search.set_value(query)
         HoverButton(bar, "Reset", self.reset, "gray", height=34, width=80).pack(side="right", padx=(0, 10), anchor="s")
         self.search.bind("<KeyRelease>", lambda e: self._debounce())
-        card = Card(self.page, accent=C.BLUE, pad=14)
+        card = Card(self.page, accent=C.PRIMARY, pad=14)
         card.pack(fill="x")
         self.table = DataTable(card.body, self.columns(), page_size=7, row_height=48,
                                empty_text="No records match your filters.")
@@ -795,7 +886,7 @@ class RespondScreen(BaseScreen):
         row.grid_columnconfigure(0, weight=1, uniform="r")
         row.grid_columnconfigure(1, weight=1, uniform="r")
         # --- details
-        left = Card(row, accent=C.BLUE, pad=22)
+        left = Card(row, accent=C.PRIMARY, pad=22)
         left.grid(row=0, column=0, sticky="nsew", padx=(0, 9))
         tk.Label(left.body, text="Feedback Details", bg=C.WHITE, fg=C.TEXT, font=font(12, "bold")).pack(anchor="w", pady=(0, 12))
         info = tk.Frame(left.body, bg=C.WHITE)
@@ -814,9 +905,9 @@ class RespondScreen(BaseScreen):
                 tk.Label(info, text=value, bg=C.WHITE, fg=C.TEXT, font=font(10, "bold"), wraplength=260,
                          justify="left", anchor="w").grid(row=r, column=1, sticky="w")
         tk.Label(left.body, text="Description", bg=C.WHITE, fg=C.TEXT, font=font(10, "bold")).pack(anchor="w", pady=(14, 6))
-        box = tk.Frame(left.body, bg="#F6F8FC")
+        box = tk.Frame(left.body, bg="#F5F3EE")
         box.pack(fill="x")
-        tk.Label(box, text=item.description, bg="#F6F8FC", fg=C.TEXT, font=font(10), wraplength=360,
+        tk.Label(box, text=item.description, bg="#F5F3EE", fg=C.TEXT, font=font(10), wraplength=360,
                  justify="left").pack(anchor="w", padx=14, pady=12)
         # --- response
         right = Card(row, accent=C.GREEN, pad=22)
@@ -840,11 +931,11 @@ class RespondScreen(BaseScreen):
         if not responses:
             tk.Label(right.body, text="No response yet.", bg=C.WHITE, fg=C.MUTED, font=font(10)).pack(anchor="w")
         for r in responses[:4]:
-            c = tk.Frame(right.body, bg=C.BLUE_SOFT)
+            c = tk.Frame(right.body, bg=C.PRIMARY_SOFT)
             c.pack(fill="x", pady=3)
-            tk.Label(c, text=f"{r['admin_name']}  \u2022  {fmt_datetime(r['created_at'])}", bg=C.BLUE_SOFT, fg=C.BLUE,
+            tk.Label(c, text=f"{r['admin_name']}  \u2022  {fmt_datetime(r['created_at'])}", bg=C.PRIMARY_SOFT, fg=C.PRIMARY,
                      font=font(9, "bold")).pack(anchor="w", padx=12, pady=(8, 0))
-            tk.Label(c, text=r["response_text"], bg=C.BLUE_SOFT, fg=C.TEXT, font=font(10), wraplength=370,
+            tk.Label(c, text=r["response_text"], bg=C.PRIMARY_SOFT, fg=C.TEXT, font=font(10), wraplength=370,
                      justify="left").pack(anchor="w", padx=12, pady=(2, 8))
 
     def send(self):
@@ -858,6 +949,9 @@ class RespondScreen(BaseScreen):
         self.after(750, lambda: self.app.navigate("manage_feedback"))
 
 
+# ======================================================================
+#  ADMIN: MANAGE USERS
+# ======================================================================
 class ManageUsersScreen(BaseScreen):
     def build(self):
         self._job = None
@@ -958,6 +1052,9 @@ class ManageUsersScreen(BaseScreen):
         m.show()
 
 
+# ======================================================================
+#  ADMIN: REPORTS
+# ======================================================================
 class ReportsScreen(BaseScreen):
     TABS = [("feedback", "Feedback Report"), ("suggestion", "Suggestion Report"), ("top", "Top Voted Suggestions")]
 
@@ -972,7 +1069,7 @@ class ReportsScreen(BaseScreen):
                             height=36, radius=18)
             b.pack(side="left", padx=(0, 8))
             self.tab_buttons[key] = b
-        rng = Card(self.page, accent=C.BLUE, pad=14)
+        rng = Card(self.page, accent=C.PRIMARY, pad=14)
         rng.pack(fill="x", pady=(0, 14))
         r = tk.Frame(rng.body, bg=C.WHITE)
         r.pack(fill="x")
