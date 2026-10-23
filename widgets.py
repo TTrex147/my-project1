@@ -98,6 +98,17 @@ class HoverArea:
             self.on_leave()
 
 
+def destroy_tree(widget):
+    """Destroy a widget and everything inside it. A harmless Tk timer error on one widget
+    can never stop the rest from being cleaned up."""
+    for child in list(widget.winfo_children()):
+        destroy_tree(child)
+    try:
+        widget.destroy()
+    except (tk.TclError, AttributeError):
+        pass
+
+
 def set_bg_tree(widget, color):
     """Change the background of a widget and everything inside it."""
     try:
@@ -600,7 +611,7 @@ class CanvasButton:
     def _click(self):
         self._fade(self.hover)
         if self.command:
-            self.command()
+            self.c.after(10, self.command)             # let the click finish first, then open pop-ups
 
 
 def canvas_link(canvas, x, y, text, command, color=C.PRIMARY, hover=C.PRIMARY_DARK, size=10,
@@ -618,7 +629,8 @@ def canvas_link(canvas, x, y, text, command, color=C.PRIMARY, hover=C.PRIMARY_DA
         canvas.configure(cursor="")
     canvas.tag_bind(item, "<Enter>", enter)
     canvas.tag_bind(item, "<Leave>", leave)
-    canvas.tag_bind(item, "<Button-1>", lambda e: command())
+    # react when the mouse button is RELEASED (like a normal button), and let the click finish first
+    canvas.tag_bind(item, "<ButtonRelease-1>", lambda e: canvas.after(10, command))
     return item
 
 
@@ -1093,18 +1105,33 @@ class Modal(tk.Toplevel):
         x = self.root.winfo_rootx() + (self.root.winfo_width() - w) // 2
         y = self.root.winfo_rooty() + (self.root.winfo_height() - h) // 3
         self.geometry(f"{w}x{h}+{max(0, x)}+{max(0, y)}")
-        try:
-            self.attributes("-alpha", 0.0)
-        except tk.TclError:
-            pass
         self.deiconify()
-        try:
-            self.wait_visibility()
-            self.grab_set()
-            animate(self, 220, lambda t: self.attributes("-alpha", t))
+        self.lift()
+        try:                                           # small fade-in (starts visible, always ends fully visible)
+            self.attributes("-alpha", 0.3)
+            animate(self, 200, lambda t: self.attributes("-alpha", 0.3 + 0.7 * t), done=self._opaque)
         except tk.TclError:
             pass
-        self.focus_set()
+        self.after(30, self._take_focus)
+
+    def _opaque(self):
+        try:
+            self.attributes("-alpha", 1.0)
+        except tk.TclError:
+            pass
+
+    def _take_focus(self, tries=0):
+        """Make this window the only one that reacts (modal). Tries again if the window is not ready yet."""
+        try:
+            self.grab_set()
+        except tk.TclError:
+            if tries < 6:
+                self.after(60, lambda: self._take_focus(tries + 1))
+            return
+        try:
+            self.focus_force()
+        except tk.TclError:
+            pass
 
     def close(self):
         try:

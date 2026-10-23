@@ -53,8 +53,8 @@ def put_rounded(img, x, y, w, h, radius, fill, ring=None):
 
 class GlassLoginScreen(tk.Canvas):
     CARD_W, CARD_H, MARGIN = 420, 540, 70
-    GLASS_BLUR = 20          # bigger number = more frosted
-    GLASS_TINT = 84          # 0-255, how white the glass is (smaller = more see-through)
+    GLASS_BLUR = 20         
+    GLASS_TINT = 84          
     SHOW_DEMO_HINT = True
 
     def __init__(self, parent, app):
@@ -73,7 +73,6 @@ class GlassLoginScreen(tk.Canvas):
             entry.bind("<FocusOut>", lambda e, n=name: self._ring(n, False), add="+")
         self.bind("<Configure>", self._on_configure)
 
-    # ------------------------------------------------------------ remember me
     def _load_remembered(self):
         try:
             with open(REMEMBER_FILE, encoding="utf-8") as f:
@@ -95,7 +94,6 @@ class GlassLoginScreen(tk.Canvas):
         except OSError:
             pass
 
-    # ------------------------------------------------------------ pictures
     def _on_configure(self, e):
         if (e.width, e.height) == self._size or e.width < 300 or e.height < 300:
             return
@@ -105,13 +103,13 @@ class GlassLoginScreen(tk.Canvas):
         if self._first:
             self._build()
         else:
-            self._job = self.after(90, self._build)       # wait until the window stops changing size
+            self._job = self.after(90, self._build)       
 
     def _make_images(self, W, H):
         cw, ch, m = self.CARD_W, self.CARD_H, self.MARGIN
         cover = cover_crop(self.src, W, H, 0.58)
         left, top = W // 2 - cw // 2, H // 2 + 20 - ch // 2
-        # --- the glass: blurred copy of what is behind the card + a little white
+        
         blur = cover.crop((left, top, left + cw, top + ch)).filter(
             ImageFilter.GaussianBlur(self.GLASS_BLUR)).convert("RGBA")
         glass = Image.alpha_composite(blur, Image.new("RGBA", (cw, ch), (255, 255, 255, self.GLASS_TINT)))
@@ -121,7 +119,7 @@ class GlassLoginScreen(tk.Canvas):
         mean = ImageStat.Stat(glass.convert("RGB").crop((45, 190, 375, 300))).mean
         pill_fill = lerp_color(hex_of(mean), "#FFFFFF", 0.58)
         track_fill = lerp_color(hex_of(mean), "#FFFFFF", 0.40)
-        # --- the card picture (shadow + glass + border + the two input boxes)
+       
         card = Image.new("RGBA", (cw + 2 * m, ch + 2 * m), (0, 0, 0, 0))
         shadow = Image.new("RGBA", card.size, (0, 0, 0, 0))
         ImageDraw.Draw(shadow).rounded_rectangle([m, m + 20, m + cw, m + ch + 20], radius=30, fill=(25, 45, 40, 95))
@@ -139,7 +137,6 @@ class GlassLoginScreen(tk.Canvas):
             put_rounded(card, m + 45, m + py, 330, 48, 24, pill_fill, ring)
         return ImageTk.PhotoImage(cover.convert("RGB")), ImageTk.PhotoImage(card), pill_fill, track_fill, ring
 
-    # ------------------------------------------------------------ drawing
     def _build(self):
         self._job = None
         W, H = self.winfo_width(), self.winfo_height()
@@ -158,7 +155,7 @@ class GlassLoginScreen(tk.Canvas):
             self.after(500, (self.pass_entry if self.user_entry.value() else self.user_entry).focus_set)
 
     def _draw_nav(self, W):
-        # little graduation-cap logo + name
+        
         x, y = 62, 46
         self.create_polygon(x, y - 14, x + 20, y - 6, x, y + 2, x - 20, y - 6, fill=C.PRIMARY_DARK, outline="")
         self.create_polygon(x - 11, y - 1, x, y + 5, x + 11, y - 1, x + 11, y + 8, x, y + 13, x - 11, y + 8,
@@ -166,8 +163,6 @@ class GlassLoginScreen(tk.Canvas):
         self.create_line(x + 17, y - 5, x + 17, y + 8, fill="#E9B949", width=2)
         self.create_text(x + 36, y - 8, text="Student Feedback", anchor="w", fill=C.DARK, font=font(13, "bold"))
         self.create_text(x + 36, y + 11, text="Suggestion Management System", anchor="w", fill="#4B5A52", font=font(9))
-        CanvasButton(self, (W - 62 - 130, 26, W - 62, 68), "Register", self._open_register, fill="#F5F9F6",
-                     hover=C.PRIMARY_SOFT, fg=C.PRIMARY, outline=C.PRIMARY, radius=14, size=11, tag="nav")
 
     def _draw_card(self, L, T, pill_fill, track_fill, ring_col):
         X, Y = (lambda v: L + v), (lambda v: T + v)
@@ -176,7 +171,7 @@ class GlassLoginScreen(tk.Canvas):
         self.create_text(cx, Y(62), text="Login", fill=dark, font=font(28, "bold"), tags="card")
         self.create_text(cx, Y(98), text="Welcome back! Please sign in to continue.", fill=soft,
                          font=font(10), tags="card")
-        # ---- role switch (Student | Admin) with a sliding dark button
+       
         self._seg_geo = (X(49), Y(132))
         track = rounded_rect(self, X(45), Y(128), X(375), Y(168), 20, fill=track_fill, outline="", tags="card")
         self._seg = rounded_rect(self, X(49) + self._seg_x, Y(132), X(49) + self._seg_x + 161, Y(164), 16,
@@ -204,10 +199,10 @@ class GlassLoginScreen(tk.Canvas):
         self.tag_bind(self._eye, "<Button-1>", lambda e: self._toggle_password())
         self.tag_bind(self._eye, "<Enter>", lambda e: self.configure(cursor="hand2"))
         self.tag_bind(self._eye, "<Leave>", lambda e: self.configure(cursor=""))
-        # ---- message
+        
         self._error = self.create_text(cx, Y(318), text=self.error_text, fill="#C23B40", font=font(9, "bold"),
                                        width=320, justify="center", tags="card")
-        # ---- remember me + forgot password
+        
         self._box = rounded_rect(self, X(45), Y(334), X(63), Y(352), 5, fill=pill_fill if not self.remember else C.PRIMARY,
                                  outline="#5C6B63" if not self.remember else C.PRIMARY, width=1.5, tags="card")
         self._tick = self.create_image(X(54), Y(343), image=icon("check", "#FFFFFF", 14),
@@ -220,10 +215,10 @@ class GlassLoginScreen(tk.Canvas):
             self.tag_bind(item, "<Leave>", lambda e: self.configure(cursor=""))
         canvas_link(self, X(375), Y(343), "Forgot Password?", self._forgot, color=dark, hover=C.PRIMARY,
                     size=10, anchor="e", bold=False, tag="card")
-        # ---- login button
+        
         CanvasButton(self, (X(45), Y(372), X(375), Y(420)), "Login", self._login, fill=dark, hover="#35483D",
                      press="#111C17", radius=16, size=12, tag="card")
-        # ---- register line
+        
         f = tkfont.Font(family=FONT, size=10)
         f2 = tkfont.Font(family=FONT, size=10, weight="bold")
         a, b = "Don't have an account?", "Register"
@@ -236,7 +231,6 @@ class GlassLoginScreen(tk.Canvas):
             self.create_text(cx, Y(498), text="Demo:  admin / admin123   \u2022   tungtungsahur / student123",
                              fill="#5C6B63", font=font(8), tags="card")
 
-    # ------------------------------------------------------------ small actions
     def _slide_in(self):
         self.move("card", 0, 34)
         last = [34.0]
@@ -274,7 +268,7 @@ class GlassLoginScreen(tk.Canvas):
         if role == self.role:
             return
         self.role = role
-        if not hasattr(self, "_seg_geo"):              # card not drawn yet: just remember the choice
+        if not hasattr(self, "_seg_geo"):              
             self._seg_x = 161.0 if role == "admin" else 0.0
             return
         stop(self._anim)

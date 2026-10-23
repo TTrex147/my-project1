@@ -22,10 +22,9 @@ STUDENTS = [
     ("Ana Garcia", "ana123"), ("Paolo Mendoza", "paolo123"), ("Bea Ramirez", "bea123"),
     ("Luis Navarro", "luis123"), ("Kyla Bautista", "kyla123"), ("Rico Fernandez", "rico123"),
     ("Sofia Castillo", "sofia123"), ("Miguel Aquino", "miguel123"), ("Trisha Domingo", "trisha123"),
-    ("Tung Tung Sahur", "tungtungsahur")
+    ("tung tung sahur", "tungtungsahur")
 ]
 
-# (title, category, status, description)
 FEEDBACK = [
     ("Library is too noisy", "Facilities", "Pending", "The library is too noisy, especially during group study. It is hard to focus."),
     ("Slow internet in the lab", "Technology", "In Progress", "The Wi-Fi in the computer lab keeps disconnecting during our online exams."),
@@ -45,7 +44,6 @@ FEEDBACK = [
     ("Water dispenser is empty", "Cafeteria", "In Progress", "The water dispenser on the 4th floor is empty almost every afternoon."),
 ]
 
-# (title, category, status, description)
 SUGGESTIONS = [
     ("More study areas", "Facilities", "Approved", "Please add more quiet study areas with tables and chairs for students."),
     ("Extend library hours", "Facilities", "Under Review", "Open the library until 9 PM during exam weeks so we can study longer."),
@@ -87,7 +85,7 @@ def seed_if_empty(db):
         return
 
     rng = random.Random(2026)
-    hashed = PasswordHasher.hash(STUDENT_PASSWORD)     # same demo password for all students
+    hashed = PasswordHasher.hash(STUDENT_PASSWORD)     
     ids = []
     for full_name, uname in STUDENTS:
         ids.append(db.execute("INSERT INTO users (full_name, username, password_hash, role, created_at) "
@@ -103,7 +101,7 @@ def seed_if_empty(db):
         db.execute("INSERT INTO responses (feedback_id, admin_id, response_text, created_at) VALUES (?,?,?,?)",
                    (feedback_ids[title], admin_id, text, _utc(rng.randint(0, 3), rng)))
 
-    popularity = [11, 9, 8, 6, 5, 7, 4, 6, 3, 2]       # how many votes each suggestion gets
+    popularity = [11, 9, 8, 6, 5, 7, 4, 6, 3, 2]      
     for (title, cat, status, desc), n_votes in zip(SUGGESTIONS, popularity):
         owner = rng.choice(ids)
         sid = db.execute("INSERT INTO suggestions (user_id, title, description, category, status, created_at) "

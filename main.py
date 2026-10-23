@@ -26,7 +26,7 @@ from screens import (AdminDashboard, ManageFeedbackScreen, ManageSuggestionsScre
                      SuggestionBoardScreen)
 from seed import seed_if_empty
 from theme import C, animate, ease_out_cubic
-from widgets import Sidebar, Toast, find_scroll_parent, setup_styles, wheel_units
+from widgets import Sidebar, Toast, destroy_tree, find_scroll_parent, setup_styles, wheel_units
 
 # screens that belong to a role: key -> screen class
 SCREENS = {
@@ -87,7 +87,7 @@ class App(tk.Tk):
     # ------------------------------------------------------------ login / logout
     def _clear(self):
         for child in self.container.winfo_children():
-            child.destroy()
+            destroy_tree(child)
         self.sidebar = self.current = None
 
     def show_login(self):
@@ -114,7 +114,7 @@ class App(tk.Tk):
     def refresh_sidebar(self):
         """Rebuild the sidebar (used after the user changes the name)."""
         key = getattr(self, "current_key", "dashboard")
-        self.sidebar.destroy()
+        destroy_tree(self.sidebar)
         self._make_sidebar()
         self.sidebar.set_active(NAV_PARENT.get(key, key))
 
@@ -125,7 +125,7 @@ class App(tk.Tk):
     # ------------------------------------------------------------ navigation
     def navigate(self, key, **params):
         if self.current is not None:
-            self.current.destroy()
+            destroy_tree(self.current)
         screen_class = SCREENS[self.user.role][key]
         screen = screen_class(self.content, self, **params)
         self.current, self.current_key = screen, key

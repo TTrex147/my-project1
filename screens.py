@@ -478,7 +478,7 @@ class SubmitScreen(BaseScreen):
             return
         self.submit_btn.flash(C.GREEN, "\u2713 Sent!")
         self.app.toast.show(f"Your {self.kind} was submitted. Thank you!", "success")
-        self.after(750, lambda: self.app.navigate("my_submissions"))
+        self.app.after(750, lambda: self.app.navigate("my_submissions"))
 
 
 class SubmitFeedbackScreen(SubmitScreen):
@@ -946,7 +946,7 @@ class RespondScreen(BaseScreen):
             return
         self.send_btn.flash(C.GREEN, "\u2713 Sent!")
         self.app.toast.show("Your response was sent to the student.", "success")
-        self.after(750, lambda: self.app.navigate("manage_feedback"))
+        self.app.after(750, lambda: self.app.navigate("manage_feedback"))
 
 
 # ======================================================================

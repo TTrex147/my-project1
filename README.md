@@ -1,6 +1,9 @@
 # Integrated Student Feedback and Suggestion Management System
 SDF04 - Object-Oriented Programming (Python & Database)
 
+This is the version WITHOUT an online server: the database file (`student_feedback.db`) is saved
+next to the app on the same computer.
+
 ## How to run
 1. Install Python 3.10 or newer (Tkinter is included on Windows/macOS).
 2. Open a terminal in this folder and run:
@@ -9,22 +12,15 @@ SDF04 - Object-Oriented Programming (Python & Database)
 3. The first run creates `student_feedback.db` (SQLite) with demo data.
 
 ## Demo accounts
-| Role    | Username       | Password   |
-|---------|----------------|------------|
-| Admin   | admin          | admin123   |
-| Student | tungtungsahur  | student123 |
+| Role    | Username      | Password   |
+|---------|---------------|------------|
+| Admin   | admin         | admin123   |
+| Student | tungtungsahur | student123 |
 (other demo students: maria456, carlo789, ana123 ... all use `student123`)
 
 To start with an EMPTY database: set `SEED_DEMO_DATA = False` in `seed.py`
 and delete `student_feedback.db` (and the `-wal` / `-shm` files next to it).
-
-## What the look is made of
-- `assets/login_bg.jpg`  the picture behind the login page. Replace it with another
-  picture to change the background (keep the name, or change it in `login_glass.py`).
-- `login_glass.py`       the transparent "glass" login card.
-  `GLASS_BLUR` (bigger = more frosted) and `GLASS_TINT` (smaller = more see-through) at the top of the class.
-- `icons.py`             the line icons are drawn by code (no image files).
-- Colors are all in `theme.py` (class `C`).
+The demo accounts under the login form can be turned off with `SHOW_DEMO_HINT` in `login_glass.py`.
 
 ## Files
 | File           | What it does                                                         |
@@ -40,6 +36,9 @@ and delete `student_feedback.db` (and the `-wal` / `-shm` files next to it).
 | database.py    | SQLite connection + the 5 tables from your schema                    |
 | security.py    | Password hashing + offensive-word filter                             |
 | seed.py        | Demo data                                                            |
+| assets/        | `login_bg.jpg` = the picture behind the login page (replace it to change the background) |
+
+`GLASS_BLUR` and `GLASS_TINT` at the top of `login_glass.py` make the glass card more or less see-through.
 
 ## OOP used in the code
 - Abstraction: `User` and `Submission` are abstract classes (`abc.ABC`)
@@ -47,10 +46,10 @@ and delete `student_feedback.db` (and the `-wal` / `-shm` files next to it).
 - Polymorphism: `menu_items()` is different for Student and Admin; `SubmissionManager` works for both feedback and suggestions
 - Encapsulation: private attributes (`_title`) with read-only properties
 
-## Live sync (multi-user)
-Open the app in two windows and log in as different users. When one window
-saves something, the other updates by itself within about 1.5 seconds
-(the green dot in the sidebar blinks orange). Uses SQLite `PRAGMA data_version`.
+## Live sync
+Open the app in two windows on the SAME computer and log in as different users. When one window
+saves something, the other updates by itself within about 1.5 seconds. (Computers that are far apart need
+the online-server version, which is a separate download.)
 
 ## Make an .exe (Windows)
     pip install pyinstaller pillow reportlab
@@ -58,7 +57,6 @@ saves something, the other updates by itself within about 1.5 seconds
 The file will be in the `dist` folder. The database is created next to the .exe.
 - `--add-data "assets;assets"` puts the login picture inside the .exe
 - `--hidden-import PIL._tkinter_finder` lets Pillow draw pictures inside the .exe
-(On macOS/Linux use `:` instead of `;` in `--add-data`.)
 
 ## Notes about the schema
 - `users.is_active` was added (needed for the "Deactivate" button in Manage Users).
