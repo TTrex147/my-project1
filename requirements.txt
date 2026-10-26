@@ -1,5 +1,5 @@
 # Tkinter and sqlite3 come with Python. These two are extra:
-pillow       # pictures, icons and the glass login (it is also in your proposal's library list)
+pillow       # pictures, icons and the glass login
 reportlab    # PDF export in Reports
 # Only needed when you build the .exe:
 # pyinstaller
